@@ -1,0 +1,28 @@
+{
+  "registry_id": "policy.bootstrap.registry",
+  "version": "0.1.0",
+  "policies": [
+    {
+      "policy_id": "policy.bootstrap",
+      "version": "0.1.0",
+      "rules": [
+        {
+          "role": "sensor",
+          "allowed_decisions": ["review", "quarantine"]
+        },
+        {
+          "role": "auditor",
+          "allowed_decisions": ["review", "allow", "deny"]
+        },
+        {
+          "role": "authority",
+          "allowed_decisions": ["review", "allow", "deny", "quarantine"]
+        },
+        {
+          "role": "admin",
+          "allowed_decisions": ["review", "allow", "deny", "quarantine"]
+        }
+      ]
+    }
+  ]
+}
