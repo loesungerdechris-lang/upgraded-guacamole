@@ -1,0 +1,15 @@
+{
+  "schema_version": "0.1.0",
+  "evidence_id": "ev-0002",
+  "issued_at": "2026-06-21T00:00:00Z",
+  "source": "synthetic-test",
+  "artifact_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "previous_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "policy_id": "policy.bootstrap",
+  "decision": "review",
+  "signature": {
+    "alg": "ES256",
+    "key_id": "test-key",
+    "value": "synthetic-signature-placeholder"
+  }
+}
