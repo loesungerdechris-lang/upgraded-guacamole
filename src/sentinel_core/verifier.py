@@ -1,8 +1,7 @@
-"""Bootstrap verifier for SENTINEL evidence records.
+"""Verifier for SENTINEL evidence records.
 
-Stage 1 verifies structure and hash-chain integrity. Cryptographic signature
-verification is intentionally represented as an explicit pending check so the
-trust-anchor model can be added without weakening the current verifier.
+Stage 1 verifies structure and hash-chain integrity. Stage 2 can additionally
+verify public-key signatures through an explicit trust registry.
 """
 
 from __future__ import annotations
@@ -10,8 +9,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from sentinel_core.crypto import CryptoVerificationError, verify_eddsa_record
 from sentinel_core.hashchain import ZERO_HASH, compute_chain_link
 from sentinel_core.schema import SchemaValidationError, validate_evidence_schema
+from sentinel_core.trust import TrustRegistry, TrustRegistryError
 
 
 @dataclass(frozen=True)
@@ -30,15 +31,18 @@ def verify_evidence_record(
     expected_previous_hash: str = ZERO_HASH,
     expected_digest: str | None = None,
     require_signature_value: bool = True,
+    trust_registry: TrustRegistry | None = None,
+    require_trusted_signature: bool = False,
 ) -> VerificationResult:
     """Verify one evidence record.
 
-    This stage checks:
+    Checks:
     - JSON Schema conformance
     - previous_hash chain continuity
     - deterministic digest computation
     - optional expected digest match
-    - presence of a signature value, without cryptographic verification yet
+    - signature value presence
+    - optional trusted EdDSA/Ed25519 signature verification
     """
 
     errors: list[str] = []
@@ -69,9 +73,27 @@ def verify_evidence_record(
     if require_signature_value and not signature_value:
         errors.append("signature.value is required")
 
-    warnings.append(
-        "cryptographic signature verification is not enabled in verifier stage 1"
-    )
+    if trust_registry is None:
+        if require_trusted_signature:
+            errors.append("trusted signature verification requested without trust registry")
+        else:
+            warnings.append("cryptographic signature verification not requested")
+    elif not isinstance(signature, dict):
+        errors.append("signature object is required for trusted verification")
+    else:
+        key_id = signature.get("key_id")
+        alg = signature.get("alg")
+        if not isinstance(key_id, str) or not isinstance(alg, str):
+            errors.append("signature.key_id and signature.alg are required")
+        else:
+            try:
+                trust_key = trust_registry.resolve_active_key(key_id, alg)
+                if trust_key.alg == "EdDSA":
+                    verify_eddsa_record(record, trust_key.public_key)
+                else:
+                    errors.append(f"unsupported trusted signature algorithm: {trust_key.alg}")
+            except (TrustRegistryError, CryptoVerificationError) as exc:
+                errors.append(str(exc))
 
     return VerificationResult(
         ok=not errors,
