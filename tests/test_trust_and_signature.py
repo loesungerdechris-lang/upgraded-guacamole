@@ -20,7 +20,7 @@ def load_fixture(name: str) -> dict:
         return json.load(handle)
 
 
-def signed_record() -> tuple[dict, TrustRegistry]:
+def signed_record(role: str = "sensor") -> tuple[dict, TrustRegistry]:
     private_key = Ed25519PrivateKey.generate()
     public_key = private_key.public_key().public_bytes_raw()
 
@@ -39,6 +39,7 @@ def signed_record() -> tuple[dict, TrustRegistry]:
                 key_id="synthetic-test-key",
                 alg="EdDSA",
                 public_key=encode_urlsafe(public_key),
+                role=role,
                 status="active",
             )
         ]
@@ -58,6 +59,8 @@ def test_verifier_accepts_trusted_eddsa_signature() -> None:
 
     assert result.ok
     assert not result.errors
+    assert result.actor_role == "sensor"
+    assert result.key_id == "synthetic-test-key"
 
 
 def test_verifier_rejects_unknown_key() -> None:
@@ -77,11 +80,13 @@ def test_verifier_rejects_unknown_key() -> None:
 
 def test_verifier_rejects_revoked_key() -> None:
     record, registry = signed_record()
+    active_key = registry.resolve_active_key("synthetic-test-key", "EdDSA")
     registry.add(
         TrustKey(
             key_id="synthetic-test-key",
             alg="EdDSA",
-            public_key=registry.resolve_active_key("synthetic-test-key", "EdDSA").public_key,
+            public_key=active_key.public_key,
+            role=active_key.role,
             status="revoked",
         )
     )
