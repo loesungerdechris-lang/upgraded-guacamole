@@ -3,6 +3,7 @@
 Stage 1 verifies structure and hash-chain integrity. Stage 2 can additionally
 verify public-key signatures through an explicit trust registry. Stage 3 adds
 policy authorization. Stage 4 binds authorization to the verified TrustKey role.
+Stage 5 validates key validity windows against record `issued_at`.
 """
 
 from __future__ import annotations
@@ -98,11 +99,14 @@ def verify_evidence_record(
     else:
         key_id = signature.get("key_id")
         alg = signature.get("alg")
+        issued_at = record.get("issued_at")
         if not isinstance(key_id, str) or not isinstance(alg, str):
             errors.append("signature.key_id and signature.alg are required")
+        elif not isinstance(issued_at, str):
+            errors.append("record.issued_at is required for trusted verification")
         else:
             try:
-                trust_key = trust_registry.resolve_active_key(key_id, alg)
+                trust_key = trust_registry.resolve_active_key_at(key_id, alg, issued_at)
                 resolved_trust_key = trust_key
                 resolved_key_id = trust_key.key_id
                 resolved_actor_role = trust_key.role
