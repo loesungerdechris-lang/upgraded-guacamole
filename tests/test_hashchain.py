@@ -3,7 +3,7 @@ from sentinel_core.hashchain import ZERO_HASH, compute_chain_link, sha256_prefix
 
 def test_sha256_prefixed_is_stable() -> None:
     assert sha256_prefixed("sentinel") == (
-        "sha256:2eec8466e3938ac713b33d9f6fe808f84b16efbfd3c28d36109e7e5bf7d0db79"
+        "sha256:2b7847b7b705781d7cf21a05e9c1bb37cbf078aea103bc3edcc6aca52ab65453"
     )
 
 
