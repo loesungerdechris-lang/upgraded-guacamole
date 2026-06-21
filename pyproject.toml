@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sentinel-core"
+version = "0.1.0"
+description = "Deterministic evidence and policy verification core for SENTINEL."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "Christian Meyer" }
+]
+license = { text = "Proprietary - internal development" }
+dependencies = [
+  "jsonschema>=4.22.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0.0",
+  "ruff>=0.5.0"
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
