@@ -1,7 +1,8 @@
 """Verifier for SENTINEL evidence records.
 
 Stage 1 verifies structure and hash-chain integrity. Stage 2 can additionally
-verify public-key signatures through an explicit trust registry.
+verify public-key signatures through an explicit trust registry. Stage 3 adds
+policy authorization: the right key still cannot do everything.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from typing import Any
 
 from sentinel_core.crypto import CryptoVerificationError, verify_eddsa_record
 from sentinel_core.hashchain import ZERO_HASH, compute_chain_link
+from sentinel_core.policy import PolicyError, PolicyRegistry, authorize_record
 from sentinel_core.schema import SchemaValidationError, validate_evidence_schema
 from sentinel_core.trust import TrustRegistry, TrustRegistryError
 
@@ -33,6 +35,9 @@ def verify_evidence_record(
     require_signature_value: bool = True,
     trust_registry: TrustRegistry | None = None,
     require_trusted_signature: bool = False,
+    policy_registry: PolicyRegistry | None = None,
+    actor_role: str | None = None,
+    require_policy_authorization: bool = False,
 ) -> VerificationResult:
     """Verify one evidence record.
 
@@ -43,6 +48,7 @@ def verify_evidence_record(
     - optional expected digest match
     - signature value presence
     - optional trusted EdDSA/Ed25519 signature verification
+    - optional policy authorization for the actor role
     """
 
     errors: list[str] = []
@@ -94,6 +100,19 @@ def verify_evidence_record(
                     errors.append(f"unsupported trusted signature algorithm: {trust_key.alg}")
             except (TrustRegistryError, CryptoVerificationError) as exc:
                 errors.append(str(exc))
+
+    if policy_registry is None:
+        if require_policy_authorization:
+            errors.append("policy authorization requested without policy registry")
+        else:
+            warnings.append("policy authorization not requested")
+    elif actor_role is None:
+        errors.append("actor_role is required for policy authorization")
+    else:
+        try:
+            authorize_record(record, role=actor_role, registry=policy_registry)
+        except PolicyError as exc:
+            errors.append(str(exc))
 
     return VerificationResult(
         ok=not errors,
