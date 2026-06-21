@@ -1,28 +1,38 @@
-# LoesungErde / Akira SENTINEL Workspace
+# SENTINEL Core
 
-This repository is the clean starting point for the SENTINEL governance and evidence-chain work.
+This repository is the active bootstrap implementation for the LoesungErde / Akira SENTINEL core.
 
 ## Purpose
 
-SENTINEL is designed as a governance and verification layer for high-risk technical and organisational decisions. The repository should remain focused on evidence integrity, policy enforcement, auditability, and safe operational tooling.
+SENTINEL is designed as a governance and verification layer for high-risk technical and organisational decisions. The repository remains focused on evidence integrity, policy enforcement, auditability, and safe operational tooling.
 
 ## Repository status
 
-- Status: bootstrap
+- Status: active bootstrap core
+- Current GitHub repository name: `upgraded-guacamole`
+- Intended repository name: `sentinel-core`
 - Owner: Christian Meyer / LoesungErde / Akira
 - Default branch: `main`
-- Change model: branch + pull request, no direct production changes
+- Change model: branch + pull request for security-relevant changes
 
-## Planned modules
+## Current modules
 
 ```text
-docs/          Architecture, governance, compliance mapping
+docs/          Architecture, governance, rename plan
 schemas/       JSON schemas for evidence and receipts
-src/           Implementation code
-scripts/       Local helper scripts
-tests/         Verifier and red-team tests
-.github/       CI, security and issue templates
+src/           Python implementation code
+tests/         Verifier, fixtures, and red-team style tests
+.github/       CI and repository hygiene checks
 ```
+
+## Implemented bootstrap checks
+
+- JSON Schema validation for evidence records
+- deterministic JSON hashing helper
+- `sha256:`-prefixed digest format
+- previous-hash continuity check
+- explicit verifier warning that cryptographic signature verification is not active yet
+- CI checks for JSON validity, forbidden secret-like files, linting, and tests
 
 ## Ground rules
 
@@ -32,6 +42,15 @@ tests/         Verifier and red-team tests
 4. Claims must be testable, documented, and reproducible.
 5. Public communication must avoid overclaims.
 
-## Next step
+## Local development
 
-The next development step is to add the first minimal evidence schema, verifier skeleton, and CI checks.
+```bash
+python -m pip install --upgrade pip
+python -m pip install -e .[dev]
+ruff check src tests
+pytest -q
+```
+
+## Verifier stage
+
+Stage 1 verifies structure and hash-chain integrity. Ed25519/ES256 signature verification is intentionally deferred until trust anchors, key identifiers, canonicalization and rotation rules are specified.
