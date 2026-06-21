@@ -1,6 +1,6 @@
 {
   "schema_version": "0.1.0",
-  "evidence_id": "ev-0003",
+  "evidence_id": "evid-0003",
   "issued_at": "2026-06-21T00:00:00Z",
   "source": "synthetic-test",
   "artifact_hash": "not-a-valid-sha256-prefixed-hash",
