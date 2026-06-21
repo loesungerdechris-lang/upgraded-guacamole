@@ -13,6 +13,7 @@ authors = [
 ]
 license = { text = "Proprietary - internal development" }
 dependencies = [
+  "cryptography>=42.0.0",
   "jsonschema>=4.22.0"
 ]
 
