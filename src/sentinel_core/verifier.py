@@ -2,7 +2,7 @@
 
 Stage 1 verifies structure and hash-chain integrity. Stage 2 can additionally
 verify public-key signatures through an explicit trust registry. Stage 3 adds
-policy authorization: the right key still cannot do everything.
+policy authorization. Stage 4 binds authorization to the verified TrustKey role.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from sentinel_core.crypto import CryptoVerificationError, verify_eddsa_record
 from sentinel_core.hashchain import ZERO_HASH, compute_chain_link
 from sentinel_core.policy import PolicyError, PolicyRegistry, authorize_record
 from sentinel_core.schema import SchemaValidationError, validate_evidence_schema
-from sentinel_core.trust import TrustRegistry, TrustRegistryError
+from sentinel_core.trust import TrustKey, TrustRegistry, TrustRegistryError
 
 
 @dataclass(frozen=True)
@@ -25,6 +25,8 @@ class VerificationResult:
     digest: str | None = None
     errors: tuple[str, ...] = field(default_factory=tuple)
     warnings: tuple[str, ...] = field(default_factory=tuple)
+    actor_role: str | None = None
+    key_id: str | None = None
 
 
 def verify_evidence_record(
@@ -48,12 +50,19 @@ def verify_evidence_record(
     - optional expected digest match
     - signature value presence
     - optional trusted EdDSA/Ed25519 signature verification
-    - optional policy authorization for the actor role
+    - optional policy authorization derived from the verified TrustKey role
+
+    `actor_role` is retained only for legacy Stage-3 compatibility when no
+    TrustRegistry is supplied. When a TrustKey is resolved, its embedded role is
+    authoritative and overrides any manual role input.
     """
 
     errors: list[str] = []
     warnings: list[str] = []
     digest: str | None = None
+    resolved_trust_key: TrustKey | None = None
+    resolved_key_id: str | None = None
+    resolved_actor_role: str | None = None
 
     try:
         validate_evidence_schema(record)
@@ -94,6 +103,9 @@ def verify_evidence_record(
         else:
             try:
                 trust_key = trust_registry.resolve_active_key(key_id, alg)
+                resolved_trust_key = trust_key
+                resolved_key_id = trust_key.key_id
+                resolved_actor_role = trust_key.role
                 if trust_key.alg == "EdDSA":
                     verify_eddsa_record(record, trust_key.public_key)
                 else:
@@ -106,17 +118,22 @@ def verify_evidence_record(
             errors.append("policy authorization requested without policy registry")
         else:
             warnings.append("policy authorization not requested")
-    elif actor_role is None:
-        errors.append("actor_role is required for policy authorization")
     else:
-        try:
-            authorize_record(record, role=actor_role, registry=policy_registry)
-        except PolicyError as exc:
-            errors.append(str(exc))
+        policy_role = resolved_trust_key.role if resolved_trust_key is not None else actor_role
+        if policy_role is None:
+            errors.append("trusted key role or actor_role is required for policy authorization")
+        else:
+            try:
+                authorize_record(record, role=policy_role, registry=policy_registry)
+                resolved_actor_role = policy_role
+            except PolicyError as exc:
+                errors.append(str(exc))
 
     return VerificationResult(
         ok=not errors,
         digest=digest,
         errors=tuple(errors),
         warnings=tuple(warnings),
+        actor_role=resolved_actor_role,
+        key_id=resolved_key_id,
     )
