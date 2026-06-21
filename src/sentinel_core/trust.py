@@ -1,4 +1,4 @@
-"""Trust registry primitives for SENTINEL verifier stage 2."""
+"""Trust registry primitives for SENTINEL verifier stages 2 and 4."""
 
 from __future__ import annotations
 
@@ -6,19 +6,21 @@ from dataclasses import dataclass
 from typing import Literal
 
 KeyStatus = Literal["active", "revoked", "expired"]
+TrustRole = Literal["sensor", "auditor", "authority", "admin"]
 
 
 @dataclass(frozen=True)
 class TrustKey:
     """Public trust-key metadata.
 
-    The registry stores public material only. Private signing material must never be
-    committed to the repository.
+    The registry stores public material and authorization metadata only. Private
+    signing material must never be committed to the repository.
     """
 
     key_id: str
     alg: str
     public_key: str
+    role: TrustRole
     status: KeyStatus = "active"
     not_before: str | None = None
     not_after: str | None = None
