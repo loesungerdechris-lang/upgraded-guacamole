@@ -1,0 +1,24 @@
+{
+  "registry_id": "trust.bootstrap",
+  "version": "0.1.0",
+  "keys": [
+    {
+      "key_id": "synthetic-bootstrap-auditor",
+      "alg": "EdDSA",
+      "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "role": "auditor",
+      "status": "active",
+      "not_before": "2026-01-01T00:00:00Z",
+      "not_after": null
+    },
+    {
+      "key_id": "synthetic-bootstrap-sensor",
+      "alg": "EdDSA",
+      "public_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "role": "sensor",
+      "status": "active",
+      "not_before": "2026-01-01T00:00:00Z",
+      "not_after": null
+    }
+  ]
+}
