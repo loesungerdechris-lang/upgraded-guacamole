@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  repository-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for forbidden secret-like files
+        shell: bash
+        run: |
+          set -euo pipefail
+          forbidden=$(find . -type f \
+            \( -name '*.pem' -o -name '*.key' -o -name '*.pfx' -o -name '*.p12' -o -name '.env' \) \
+            -not -path './.git/*' || true)
+          if [ -n "$forbidden" ]; then
+            echo "Forbidden secret-like files found:"
+            echo "$forbidden"
+            exit 1
+          fi
+
+      - name: Validate JSON files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          for path in Path('.').rglob('*.json'):
+              if '.git' in path.parts:
+                  continue
+              with path.open('r', encoding='utf-8') as handle:
+                  json.load(handle)
+              print(f'valid json: {path}')
+          PY
