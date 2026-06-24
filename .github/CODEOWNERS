@@ -1,0 +1,9 @@
+# SENTINEL security-sensitive ownership
+
+/internal/evidence/ @loesungerdechris-lang
+/internal/policy/ @loesungerdechris-lang
+/internal/receipt/ @loesungerdechris-lang
+/internal/registry/ @loesungerdechris-lang
+/internal/crypto/ @loesungerdechris-lang
+/schemas/ @loesungerdechris-lang
+/.github/workflows/ @loesungerdechris-lang
