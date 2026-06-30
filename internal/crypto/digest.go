@@ -22,6 +22,9 @@ func ValidateSHA256Digest(value string) error {
 	if len(hexPart) != 64 {
 		return errors.New("sha256 digest must contain 64 hex characters")
 	}
+	if strings.ToLower(hexPart) != hexPart {
+		return errors.New("sha256 digest must use lowercase hex characters")
+	}
 	_, err := hex.DecodeString(hexPart)
 	return err
 }
