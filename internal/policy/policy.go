@@ -1,6 +1,9 @@
 package policy
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 type Gate string
 
@@ -22,6 +25,15 @@ const (
 	DecisionBlock    Decision = "BLOCK"
 	DecisionEscalate Decision = "ESCALATE_HUMAN"
 )
+
+func IsKnownDecision(decision Decision) bool {
+	switch decision {
+	case DecisionAllow, DecisionObserve, DecisionFlag, DecisionRequire, DecisionBlock, DecisionEscalate:
+		return true
+	default:
+		return false
+	}
+}
 
 type Policy struct {
 	ID          string `json:"id"`
@@ -46,7 +58,7 @@ func Decide(p Policy, riskScore float64) (Decision, error) {
 	if err := p.Validate(); err != nil {
 		return "", err
 	}
-	if riskScore < 0 || riskScore > 1 {
+	if math.IsNaN(riskScore) || riskScore < 0 || riskScore > 1 {
 		return "", fmt.Errorf("risk score must be between 0 and 1")
 	}
 	if riskScore < 0.50 {
