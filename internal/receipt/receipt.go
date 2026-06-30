@@ -30,6 +30,15 @@ type Receipt struct {
 	Signature    Signature `json:"signature"`
 }
 
+func knownDecision(value string) bool {
+	switch value {
+	case "ALLOW", "OBSERVE", "FLAG", "REQUIRE_EVIDENCE", "BLOCK", "ESCALATE_HUMAN":
+		return true
+	default:
+		return false
+	}
+}
+
 func (r Receipt) ValidateStructure() error {
 	if r.Version == "" || r.ReceiptID == "" {
 		return fmt.Errorf("version and receipt_id are required")
@@ -39,6 +48,9 @@ func (r Receipt) ValidateStructure() error {
 	}
 	if r.PolicyID == "" || r.Decision == "" {
 		return fmt.Errorf("policy_id and decision are required")
+	}
+	if !knownDecision(r.Decision) {
+		return fmt.Errorf("receipt decision is not recognized")
 	}
 	if r.Reason.Code == "" {
 		return fmt.Errorf("reason.code is required")
