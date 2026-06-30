@@ -31,3 +31,17 @@ func (r TrustRegistry) ResolveActive(keyID string) (TrustKey, error) {
 	}
 	return key, nil
 }
+
+func (r TrustRegistry) ResolveActiveForAlg(keyID string, alg string) (TrustKey, error) {
+	key, err := r.ResolveActive(keyID)
+	if err != nil {
+		return TrustKey{}, err
+	}
+	if alg == "" {
+		return TrustKey{}, fmt.Errorf("signature algorithm is required")
+	}
+	if key.Alg != alg {
+		return TrustKey{}, fmt.Errorf("trust key %q algorithm mismatch: registered %q, requested %q", keyID, key.Alg, alg)
+	}
+	return key, nil
+}
