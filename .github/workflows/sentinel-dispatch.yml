@@ -1,0 +1,63 @@
+name: SENTINEL Issue Dispatcher
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  actions: write
+  contents: read
+  issues: write
+
+jobs:
+  dispatch:
+    name: Dispatch allowed SENTINEL workflow
+    if: startsWith(github.event.issue.title, '[SENTINEL DISPATCH]')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate request and dispatch workflow
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          AUTHORIZED_REGEX='^(loesungerdechris-lang|chatgpt-codex-connector)$'
+          if [[ ! "$ISSUE_AUTHOR" =~ $AUTHORIZED_REGEX ]]; then
+            echo "Unauthorized dispatcher author: $ISSUE_AUTHOR"
+            exit 1
+          fi
+
+          if [[ ! "$ISSUE_TITLE" =~ ^\[SENTINEL[[:space:]]DISPATCH\][[:space:]]([a-z0-9-]+)[[:space:]](main)$ ]]; then
+            echo "Invalid dispatch title. Expected: [SENTINEL DISPATCH] <target> main"
+            exit 1
+          fi
+
+          TARGET="${BASH_REMATCH[1]}"
+          REF="${BASH_REMATCH[2]}"
+
+          case "$TARGET" in
+            core-ci)
+              WORKFLOW="ci.yml"
+              ;;
+            core-go)
+              WORKFLOW="go-core-ci.yml"
+              ;;
+            core-security)
+              WORKFLOW="go-security.yml"
+              ;;
+            core-secret)
+              WORKFLOW="secret-scan.yml"
+              ;;
+            *)
+              echo "Target is not allowlisted: $TARGET"
+              exit 1
+              ;;
+          esac
+
+          gh workflow run "$WORKFLOW" --ref "$REF" --repo "$REPO"
+          gh issue close "$ISSUE_NUMBER" --repo "$REPO" --comment "SENTINEL dispatcher accepted target '$TARGET' and started workflow '$WORKFLOW' on '$REF'."
