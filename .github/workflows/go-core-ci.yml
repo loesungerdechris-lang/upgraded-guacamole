@@ -1,6 +1,7 @@
 name: SENTINEL Core Go CI
 
 on:
+  workflow_dispatch:
   push:
     branches: ["main", "release/**"]
   pull_request:
