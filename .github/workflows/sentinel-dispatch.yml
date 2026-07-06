@@ -47,10 +47,10 @@ jobs:
             core-go)
               WORKFLOW="go-core-ci.yml"
               ;;
-            core-security)
+            core-security|core-sec)
               WORKFLOW="go-security.yml"
               ;;
-            core-secret)
+            core-secret|core-scan)
               WORKFLOW="secret-scan.yml"
               ;;
             *)
