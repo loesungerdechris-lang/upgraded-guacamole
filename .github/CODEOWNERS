@@ -13,6 +13,10 @@
 /src/sentinel_core/schema.py @loesungerdechris-lang
 /src/sentinel_core/trust.py @loesungerdechris-lang
 /tests/test_receipt_verifier.py @loesungerdechris-lang
+/docs/receipt-verifier-production-gate.md @loesungerdechris-lang
+/docs/github-main-protection-checklist.md @loesungerdechris-lang
 /.github/workflows/ @loesungerdechris-lang
 /.github/CODEOWNERS @loesungerdechris-lang
+/.github/pull_request_template.md @loesungerdechris-lang
 /SECURITY.md @loesungerdechris-lang
+/README.md @loesungerdechris-lang
