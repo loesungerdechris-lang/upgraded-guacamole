@@ -91,6 +91,21 @@ Required checks:
 Do not allow bypassing the above settings: on, where available
 ```
 
+## Merge-readiness checklist
+
+Before merging a receipt-verifier PR, verify:
+
+```text
+- PR is not draft.
+- PR is mergeable.
+- CI is green.
+- SENTINEL Receipt Verifier Gate is green.
+- Secret scan is green.
+- CODEOWNERS includes every touched verifier/security surface.
+- PR body documents the verifier-only boundary.
+- No private signing material appears in the diff.
+```
+
 ## Non-goals
 
 This PR does not add production private-key custody. That belongs outside this repository surface, for example in a controlled signer backed by Key Vault, HSM, TPM, or CI-protected secret storage.
