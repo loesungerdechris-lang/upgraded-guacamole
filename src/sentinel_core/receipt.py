@@ -60,7 +60,13 @@ def _issue(
     code: str,
     message: str,
 ) -> None:
-    issues.append(ReceiptVerificationIssue(severity=severity, code=code, message=message))
+    issues.append(
+        ReceiptVerificationIssue(
+            severity=severity,
+            code=code,
+            message=message,
+        )
+    )
 
 
 def parse_rfc3339_utc(value: str) -> datetime:
@@ -106,7 +112,8 @@ def receipt_hash(receipt: dict[str, Any]) -> str:
 
 
 def _payload_b64(receipt: dict[str, Any]) -> str:
-    return _b64url_encode(build_unsigned_receipt_payload(receipt).encode("utf-8"))
+    payload = build_unsigned_receipt_payload(receipt).encode("utf-8")
+    return _b64url_encode(payload)
 
 
 def _load_es256_public_key(jwk: dict[str, Any]) -> ec.EllipticCurvePublicKey:
@@ -182,12 +189,22 @@ def verify_receipt(
         )
 
     if receipt.get("schema_version") != "sentinel.receipt.v1":
-        _issue(issues, "error", "SCHEMA_VERSION_INVALID", "Unsupported receipt schema version.")
+        _issue(
+            issues,
+            "error",
+            "SCHEMA_VERSION_INVALID",
+            "Unsupported receipt schema version.",
+        )
 
     created_at = receipt.get("created_at")
     created_at_dt: datetime | None = None
     if not isinstance(created_at, str) or not created_at.endswith("Z"):
-        _issue(issues, "error", "CREATED_AT_INVALID", "created_at must be RFC3339 UTC ending Z.")
+        _issue(
+            issues,
+            "error",
+            "CREATED_AT_INVALID",
+            "created_at must be RFC3339 UTC ending Z.",
+        )
     else:
         try:
             created_at_dt = parse_rfc3339_utc(created_at)
@@ -195,14 +212,29 @@ def verify_receipt(
             _issue(issues, "error", "CREATED_AT_INVALID", str(exc))
 
     if receipt.get("release_class") not in {"A", "B", "C"}:
-        _issue(issues, "error", "RELEASE_CLASS_INVALID", "release_class must be A, B or C.")
+        _issue(
+            issues,
+            "error",
+            "RELEASE_CLASS_INVALID",
+            "release_class must be A, B or C.",
+        )
 
     if not isinstance(chain.get("sequence"), int):
-        _issue(issues, "error", "CHAIN_SEQUENCE_INVALID", "chain.sequence must be an integer.")
+        _issue(
+            issues,
+            "error",
+            "CHAIN_SEQUENCE_INVALID",
+            "chain.sequence must be an integer.",
+        )
 
     previous_hash = chain.get("previous_hash")
     if not isinstance(previous_hash, str) or not previous_hash.startswith("sha256:"):
-        _issue(issues, "error", "PREVIOUS_HASH_INVALID", "chain.previous_hash must be a sha256: URN.")
+        _issue(
+            issues,
+            "error",
+            "PREVIOUS_HASH_INVALID",
+            "chain.previous_hash must be a sha256: URN.",
+        )
 
     expected_hash = receipt_hash(receipt)
     if chain.get("receipt_hash") != expected_hash:
@@ -216,10 +248,17 @@ def verify_receipt(
     expected_payload_b64 = _payload_b64(receipt)
     signatures = receipt.get("signatures")
     if not isinstance(signatures, list) or not signatures:
-        _issue(issues, "error", "SIGNATURES_MISSING", "Receipt contains no signatures.")
+        _issue(
+            issues,
+            "error",
+            "SIGNATURES_MISSING",
+            "Receipt contains no signatures.",
+        )
         signatures = []
 
-    if not isinstance(required_roles, list) or not all(isinstance(role, str) for role in required_roles):
+    if not isinstance(required_roles, list) or not all(
+        isinstance(role, str) for role in required_roles
+    ):
         _issue(
             issues,
             "error",
@@ -239,14 +278,24 @@ def verify_receipt(
 
     for signature in signatures:
         if not isinstance(signature, dict):
-            _issue(issues, "error", "SIGNATURE_INVALID", "Signature entry must be an object.")
+            _issue(
+                issues,
+                "error",
+                "SIGNATURE_INVALID",
+                "Signature entry must be an object.",
+            )
             continue
 
         kid = signature.get("kid")
         signer_role = signature.get("signer_role")
         alg = signature.get("alg")
         if not isinstance(kid, str) or not isinstance(signer_role, str) or alg != "ES256":
-            _issue(issues, "error", "SIGNATURE_METADATA_INVALID", "Invalid signature metadata.")
+            _issue(
+                issues,
+                "error",
+                "SIGNATURE_METADATA_INVALID",
+                "Invalid signature metadata.",
+            )
             continue
 
         trust_key = trust_registry.get(kid)
@@ -255,27 +304,56 @@ def verify_receipt(
             continue
 
         if trust_key.get("status") != "active":
-            _issue(issues, "error", "KEY_NOT_ACTIVE", f"Signing key is not active: {kid}")
+            _issue(
+                issues,
+                "error",
+                "KEY_NOT_ACTIVE",
+                f"Signing key is not active: {kid}",
+            )
             continue
 
         if trust_key.get("alg") != "ES256":
-            _issue(issues, "error", "ALG_INVALID", f"Unsupported algorithm for key: {kid}")
+            _issue(
+                issues,
+                "error",
+                "ALG_INVALID",
+                f"Unsupported algorithm for key: {kid}",
+            )
             continue
 
         if trust_key.get("role") != signer_role:
-            _issue(issues, "error", "ROLE_MISMATCH", f"Signer role does not match trust key: {kid}")
+            _issue(
+                issues,
+                "error",
+                "ROLE_MISMATCH",
+                f"Signer role does not match trust key: {kid}",
+            )
             continue
 
         if created_at_dt is not None:
             not_before = trust_key.get("not_before")
             not_after = trust_key.get("not_after")
             try:
-                if isinstance(not_before, str) and created_at_dt < parse_rfc3339_utc(not_before):
-                    _issue(issues, "error", "KEY_NOT_YET_VALID", f"Key was not valid yet: {kid}")
-                    continue
-                if isinstance(not_after, str) and created_at_dt > parse_rfc3339_utc(not_after):
-                    _issue(issues, "error", "KEY_EXPIRED", f"Key was expired: {kid}")
-                    continue
+                if isinstance(not_before, str):
+                    not_before_dt = parse_rfc3339_utc(not_before)
+                    if created_at_dt < not_before_dt:
+                        _issue(
+                            issues,
+                            "error",
+                            "KEY_NOT_YET_VALID",
+                            f"Key was not valid yet: {kid}",
+                        )
+                        continue
+                if isinstance(not_after, str):
+                    not_after_dt = parse_rfc3339_utc(not_after)
+                    if created_at_dt > not_after_dt:
+                        _issue(
+                            issues,
+                            "error",
+                            "KEY_EXPIRED",
+                            f"Key was expired: {kid}",
+                        )
+                        continue
             except ValueError as exc:
                 _issue(issues, "error", "KEY_WINDOW_INVALID", str(exc))
                 continue
@@ -284,21 +362,41 @@ def verify_receipt(
         payload = signature.get("payload")
         value = signature.get("signature")
         if not all(isinstance(part, str) and part for part in (protected, payload, value)):
-            _issue(issues, "error", "SIGNATURE_PARTS_MISSING", f"Signature parts missing: {kid}")
+            _issue(
+                issues,
+                "error",
+                "SIGNATURE_PARTS_MISSING",
+                f"Signature parts missing: {kid}",
+            )
             continue
 
         try:
             protected_header = json.loads(_b64url_decode(protected).decode("utf-8"))
         except (ValueError, UnicodeDecodeError) as exc:
-            _issue(issues, "error", "PROTECTED_HEADER_INVALID", f"Invalid protected header: {exc}")
+            _issue(
+                issues,
+                "error",
+                "PROTECTED_HEADER_INVALID",
+                f"Invalid protected header: {exc}",
+            )
             continue
 
         if protected_header.get("alg") != "ES256":
-            _issue(issues, "error", "PROTECTED_HEADER_ALG_INVALID", f"Invalid header alg: {kid}")
+            _issue(
+                issues,
+                "error",
+                "PROTECTED_HEADER_ALG_INVALID",
+                f"Invalid header alg: {kid}",
+            )
             continue
 
         if protected_header.get("kid") != kid:
-            _issue(issues, "error", "PROTECTED_HEADER_KID_MISMATCH", f"Header kid mismatch: {kid}")
+            _issue(
+                issues,
+                "error",
+                "PROTECTED_HEADER_KID_MISMATCH",
+                f"Header kid mismatch: {kid}",
+            )
             continue
 
         if payload != expected_payload_b64:
@@ -311,15 +409,27 @@ def verify_receipt(
             continue
 
         try:
-            if not verify_es256_jws_signature(
+            is_valid = verify_es256_jws_signature(
                 public_jwk=trust_key["jwk"],
                 signing_input=f"{protected}.{payload}",
                 signature_b64=value,
-            ):
-                _issue(issues, "error", "SIGNATURE_INVALID", f"Invalid ES256 signature: {kid}")
-                continue
+            )
         except (KeyError, ValueError, TypeError) as exc:
-            _issue(issues, "error", "SIGNATURE_PARSE_ERROR", f"Could not verify {kid}: {exc}")
+            _issue(
+                issues,
+                "error",
+                "SIGNATURE_PARSE_ERROR",
+                f"Could not verify {kid}: {exc}",
+            )
+            continue
+
+        if not is_valid:
+            _issue(
+                issues,
+                "error",
+                "SIGNATURE_INVALID",
+                f"Invalid ES256 signature: {kid}",
+            )
             continue
 
         valid_signatures += 1
@@ -327,7 +437,12 @@ def verify_receipt(
 
     for role in required_roles:
         if role not in matched_roles:
-            _issue(issues, "error", "REQUIRED_ROLE_MISSING", f"Missing required role: {role}")
+            _issue(
+                issues,
+                "error",
+                "REQUIRED_ROLE_MISSING",
+                f"Missing required role: {role}",
+            )
 
     if valid_signatures < int(min_signatures):
         _issue(
