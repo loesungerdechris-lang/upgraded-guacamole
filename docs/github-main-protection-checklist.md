@@ -42,6 +42,21 @@ For changes touching verifier, trust, policy, schema, CI or security docs, revie
 - required negative tests
 - no public overclaims
 
+## CODEOWNERS-covered governance surface
+
+The receipt-verifier governance surface should remain covered by `.github/CODEOWNERS`, including:
+
+```text
+src/sentinel_core/receipt.py
+tests/test_receipt_verifier.py
+docs/receipt-verifier-production-gate.md
+docs/github-main-protection-checklist.md
+.github/workflows/
+.github/pull_request_template.md
+SECURITY.md
+README.md
+```
+
 ## Receipt-specific merge blockers
 
 Do not merge if any of these are true:
