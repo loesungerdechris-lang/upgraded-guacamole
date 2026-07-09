@@ -77,6 +77,19 @@ This branch also adds repository-level collaboration guardrails:
 - `.gitignore` blocks private JWK files and local `.sentinel/private/` signing workspaces.
 - `docs/github-main-protection-checklist.md` defines the required `main` protection checklist after merge.
 
+The CODEOWNERS-covered verifier governance surface includes:
+
+```text
+src/sentinel_core/receipt.py
+tests/test_receipt_verifier.py
+docs/receipt-verifier-production-gate.md
+docs/github-main-protection-checklist.md
+.github/workflows/
+.github/pull_request_template.md
+SECURITY.md
+README.md
+```
+
 Recommended repository settings after merge:
 
 ```text
