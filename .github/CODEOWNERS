@@ -6,4 +6,13 @@
 /internal/registry/ @loesungerdechris-lang
 /internal/crypto/ @loesungerdechris-lang
 /schemas/ @loesungerdechris-lang
+/src/sentinel_core/crypto.py @loesungerdechris-lang
+/src/sentinel_core/hashchain.py @loesungerdechris-lang
+/src/sentinel_core/policy.py @loesungerdechris-lang
+/src/sentinel_core/receipt.py @loesungerdechris-lang
+/src/sentinel_core/schema.py @loesungerdechris-lang
+/src/sentinel_core/trust.py @loesungerdechris-lang
+/tests/test_receipt_verifier.py @loesungerdechris-lang
 /.github/workflows/ @loesungerdechris-lang
+/.github/CODEOWNERS @loesungerdechris-lang
+/SECURITY.md @loesungerdechris-lang
