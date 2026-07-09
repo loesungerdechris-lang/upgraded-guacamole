@@ -381,6 +381,15 @@ def verify_receipt(
             )
             continue
 
+        if not isinstance(protected_header, dict):
+            _issue(
+                issues,
+                "error",
+                "PROTECTED_HEADER_INVALID",
+                f"Protected header must be a JSON object: {kid}",
+            )
+            continue
+
         if protected_header.get("alg") != "ES256":
             _issue(
                 issues,
