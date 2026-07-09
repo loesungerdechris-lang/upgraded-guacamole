@@ -48,5 +48,7 @@ tmp/
 *.key
 *.pfx
 *.p12
+*.private.jwk
+.sentinel/private/
 secrets/
 private/
