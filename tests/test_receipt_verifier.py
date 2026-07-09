@@ -221,6 +221,18 @@ def test_rejects_corrupted_signature_bytes() -> None:
     assert "SIGNATURE_PARSE_ERROR" in _codes(result)
 
 
+def test_rejects_non_object_protected_header_without_crashing() -> None:
+    receipt, trust_registry = _signed_fixture()
+    malformed = deepcopy(receipt)
+    malformed["signatures"][0]["protected"] = _b64url_encode(b"[]")
+
+    result = verify_receipt(malformed, trust_registry=trust_registry)
+
+    assert result.status == "NOT_VERIFIED"
+    assert result.verified is False
+    assert "PROTECTED_HEADER_INVALID" in _codes(result)
+
+
 def test_rejects_malformed_previous_hash() -> None:
     receipt, trust_registry = _signed_fixture()
     tampered = deepcopy(receipt)
