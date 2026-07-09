@@ -84,6 +84,15 @@ ruff check src tests
 pytest -q
 ```
 
+GitHub guardrails for this verifier path are documented in:
+
+```text
+docs/receipt-verifier-production-gate.md
+.github/pull_request_template.md
+.github/CODEOWNERS
+SECURITY.md
+```
+
 ## Verifier stage
 
 Stage 1 verifies structure and hash-chain integrity. Stages 2-5 add trusted public-key verification, policy authorization, TrustKey role binding and key validity windows. The receipt verifier extends this line with ES256/JWS-style release receipt verification and explicit production boundaries: verifier code only, public trust registry only, no private keys in repository code.
