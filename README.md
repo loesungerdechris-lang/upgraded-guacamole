@@ -31,7 +31,12 @@ tests/         Verifier, fixtures, and red-team style tests
 - deterministic JSON hashing helper
 - `sha256:`-prefixed digest format
 - previous-hash continuity check
-- explicit verifier warning that cryptographic signature verification is not active yet
+- Ed25519 evidence-record signature verification through explicit trust registry
+- policy authorization derived from verified TrustKey role
+- key validity-window checks against record timestamps
+- ES256/JWS-style release receipt verification through public trust registry
+- release receipt policy checks for required roles and minimum signatures
+- receipt tamper tests for subject, evidence, signature, key status, role binding and chain data
 - CI checks for JSON validity, forbidden secret-like files, linting, and tests
 
 ## Ground rules
@@ -41,6 +46,7 @@ tests/         Verifier, fixtures, and red-team style tests
 3. Security-relevant changes require review.
 4. Claims must be testable, documented, and reproducible.
 5. Public communication must avoid overclaims.
+6. Frontend surfaces may verify receipts, but must never create trust, generate signing keys, or hold private signing material.
 
 ## Local development
 
@@ -51,6 +57,33 @@ ruff check src tests
 pytest -q
 ```
 
+## Receipt verifier gate
+
+The production-oriented receipt verifier is implemented as verifier-only code. It accepts signed SENTINEL receipts and a public trust registry, then checks:
+
+- canonical unsigned receipt payload
+- `chain.receipt_hash`
+- ES256 JWS-style signatures
+- `kid`, algorithm and protected-header binding
+- trust-key active/revoked state
+- key validity windows
+- signer role binding
+- required roles and minimum signature policy
+- class-A release policy floor
+
+Run the receipt-specific red-team tests locally:
+
+```bash
+pytest -q tests/test_receipt_verifier.py
+```
+
+Run the full local gate:
+
+```bash
+ruff check src tests
+pytest -q
+```
+
 ## Verifier stage
 
-Stage 1 verifies structure and hash-chain integrity. Ed25519/ES256 signature verification is intentionally deferred until trust anchors, key identifiers, canonicalization and rotation rules are specified.
+Stage 1 verifies structure and hash-chain integrity. Stages 2-5 add trusted public-key verification, policy authorization, TrustKey role binding and key validity windows. The receipt verifier extends this line with ES256/JWS-style release receipt verification and explicit production boundaries: verifier code only, public trust registry only, no private keys in repository code.
