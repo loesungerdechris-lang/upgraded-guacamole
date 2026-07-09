@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -21,6 +22,8 @@ from sentinel_core.hashchain import canonicalize_json, sha256_prefixed
 
 ReceiptStatus = Literal["RC_VERIFIED", "NOT_VERIFIED", "CONFIG_ERROR"]
 IssueSeverity = Literal["error", "warning", "info"]
+
+_SHA256_URN_RE = re.compile(r"^sha256:[0-9a-fA-F]{64}$")
 
 
 @dataclass(frozen=True)
@@ -166,12 +169,57 @@ def verify_receipt(
 
     issues: list[ReceiptVerificationIssue] = []
     matched_roles: set[str] = set()
+    seen_valid_kids: set[str] = set()
     valid_signatures = 0
 
-    policy = receipt.get("policy") if isinstance(receipt.get("policy"), dict) else {}
+    raw_policy = receipt.get("policy")
+    policy_is_object = isinstance(raw_policy, dict)
+    policy = raw_policy if policy_is_object else {}
     chain = receipt.get("chain") if isinstance(receipt.get("chain"), dict) else {}
     required_roles = policy.get("required_roles", [])
-    min_signatures = policy.get("min_signatures", 0)
+    min_signatures_raw = policy.get("min_signatures")
+    min_signatures = 0
+
+    if not policy_is_object:
+        _issue(
+            issues,
+            "error",
+            "POLICY_INVALID",
+            "Receipt policy must be an object.",
+        )
+
+    if (
+        receipt.get("release_class") in {"B", "C"}
+        and (not policy_is_object or "min_signatures" not in policy)
+    ):
+        _issue(
+            issues,
+            "error",
+            "RELEASE_POLICY_REQUIRED",
+            "Class B/C release receipts require an explicit signature policy.",
+        )
+
+    if (
+        isinstance(min_signatures_raw, bool)
+        or not isinstance(min_signatures_raw, int)
+        or min_signatures_raw < 0
+    ):
+        _issue(
+            issues,
+            "error",
+            "MIN_SIGNATURES_INVALID",
+            "policy.min_signatures must be a non-negative integer.",
+        )
+    else:
+        min_signatures = min_signatures_raw
+
+    if receipt.get("release_class") in {"B", "C"} and min_signatures < 1:
+        _issue(
+            issues,
+            "error",
+            "RELEASE_POLICY_TOO_WEAK",
+            "Class B/C release receipts require at least one valid signature.",
+        )
 
     if not trust_registry:
         _issue(
@@ -184,7 +232,7 @@ def verify_receipt(
             status="CONFIG_ERROR",
             verified=False,
             valid_signatures=0,
-            required_signatures=int(min_signatures or 0),
+            required_signatures=min_signatures,
             issues=tuple(issues),
         )
 
@@ -228,12 +276,12 @@ def verify_receipt(
         )
 
     previous_hash = chain.get("previous_hash")
-    if not isinstance(previous_hash, str) or not previous_hash.startswith("sha256:"):
+    if not isinstance(previous_hash, str) or not _SHA256_URN_RE.fullmatch(previous_hash):
         _issue(
             issues,
             "error",
             "PREVIOUS_HASH_INVALID",
-            "chain.previous_hash must be a sha256: URN.",
+            "chain.previous_hash must be sha256: followed by exactly 64 hex characters.",
         )
 
     expected_hash = receipt_hash(receipt)
@@ -441,6 +489,16 @@ def verify_receipt(
             )
             continue
 
+        if kid in seen_valid_kids:
+            _issue(
+                issues,
+                "warning",
+                "DUPLICATE_SIGNATURE_IGNORED",
+                f"Duplicate signature ignored for signing key: {kid}",
+            )
+            continue
+
+        seen_valid_kids.add(kid)
         valid_signatures += 1
         matched_roles.add(signer_role)
 
@@ -453,7 +511,7 @@ def verify_receipt(
                 f"Missing required role: {role}",
             )
 
-    if valid_signatures < int(min_signatures):
+    if valid_signatures < min_signatures:
         _issue(
             issues,
             "error",
@@ -461,7 +519,7 @@ def verify_receipt(
             f"Only {valid_signatures} valid signatures, required {min_signatures}.",
         )
 
-    if receipt.get("release_class") == "A" and int(min_signatures) < 2:
+    if receipt.get("release_class") == "A" and min_signatures < 2:
         _issue(
             issues,
             "error",
@@ -474,7 +532,7 @@ def verify_receipt(
         status="NOT_VERIFIED" if has_errors else "RC_VERIFIED",
         verified=not has_errors,
         valid_signatures=valid_signatures,
-        required_signatures=int(min_signatures),
+        required_signatures=min_signatures,
         matched_roles=tuple(sorted(matched_roles)),
         receipt_hash=expected_hash,
         issues=tuple(issues),

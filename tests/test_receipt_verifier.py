@@ -265,3 +265,79 @@ def test_empty_trust_registry_is_configuration_error() -> None:
     assert result.status == "CONFIG_ERROR"
     assert result.verified is False
     assert "TRUST_REGISTRY_EMPTY" in _codes(result)
+
+
+def test_does_not_count_duplicate_signature_toward_quorum() -> None:
+    marketing = _new_key("key-mkt-lead-01", "marketing_lead")
+    legal = _new_key("key-legal-ciso-02", "legal_officer")
+    receipt = _unsigned_receipt()
+    receipt["release_class"] = "B"
+    receipt["policy"] = {
+        "policy_id": "sentinel.release-control",
+        "policy_version": "1.0.0",
+        "required_roles": ["marketing_lead"],
+        "min_signatures": 2,
+    }
+    _sign(receipt, marketing)
+    receipt["signatures"].append(deepcopy(receipt["signatures"][0]))
+
+    result = verify_receipt(receipt, trust_registry=_registry(marketing, legal))
+
+    assert result.status == "NOT_VERIFIED"
+    assert result.valid_signatures == 1
+    assert "DUPLICATE_SIGNATURE_IGNORED" in _codes(result)
+    assert "MIN_SIGNATURES_NOT_MET" in _codes(result)
+
+
+def test_rejects_sha256_prefix_with_malformed_previous_hash_digest() -> None:
+    marketing = _new_key("key-mkt-lead-01", "marketing_lead")
+    legal = _new_key("key-legal-ciso-02", "legal_officer")
+    receipt = _unsigned_receipt()
+    receipt["chain"]["previous_hash"] = "sha256:not-a-digest"
+    _sign(receipt, marketing)
+    _sign(receipt, legal)
+
+    result = verify_receipt(receipt, trust_registry=_registry(marketing, legal))
+
+    assert result.status == "NOT_VERIFIED"
+    assert "PREVIOUS_HASH_INVALID" in _codes(result)
+
+
+def test_rejects_policy_less_class_b_receipt() -> None:
+    marketing = _new_key("key-mkt-lead-01", "marketing_lead")
+    receipt = _unsigned_receipt()
+    receipt["release_class"] = "B"
+    receipt["policy"] = None
+    _sign(receipt, marketing)
+
+    result = verify_receipt(receipt, trust_registry=_registry(marketing))
+
+    assert result.status == "NOT_VERIFIED"
+    assert "POLICY_INVALID" in _codes(result)
+    assert "RELEASE_POLICY_REQUIRED" in _codes(result)
+
+
+def test_rejects_empty_class_c_policy() -> None:
+    marketing = _new_key("key-mkt-lead-01", "marketing_lead")
+    receipt = _unsigned_receipt()
+    receipt["release_class"] = "C"
+    receipt["policy"] = {}
+    _sign(receipt, marketing)
+
+    result = verify_receipt(receipt, trust_registry=_registry(marketing))
+
+    assert result.status == "NOT_VERIFIED"
+    assert "RELEASE_POLICY_REQUIRED" in _codes(result)
+    assert "MIN_SIGNATURES_INVALID" in _codes(result)
+
+
+def test_empty_registry_with_malformed_policy_is_config_error_not_crash() -> None:
+    receipt, _ = _signed_fixture()
+    receipt["policy"]["min_signatures"] = "two"
+
+    result = verify_receipt(receipt, trust_registry={})
+
+    assert result.status == "CONFIG_ERROR"
+    assert result.verified is False
+    assert "TRUST_REGISTRY_EMPTY" in _codes(result)
+    assert "MIN_SIGNATURES_INVALID" in _codes(result)
