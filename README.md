@@ -88,6 +88,7 @@ GitHub guardrails for this verifier path are documented in:
 
 ```text
 docs/receipt-verifier-production-gate.md
+docs/github-main-protection-checklist.md
 .github/pull_request_template.md
 .github/CODEOWNERS
 SECURITY.md
