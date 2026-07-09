@@ -20,6 +20,7 @@ Confirm before merge:
 - [ ] PR is not draft.
 - [ ] PR is mergeable.
 - [ ] Required GitHub Actions checks are green.
+- [ ] `SENTINEL Receipt Verifier Gate` is green when verifier, trust, policy, schema, workflow, security or documentation surfaces are touched.
 - [ ] CODEOWNERS coverage is correct for touched security-sensitive files.
 - [ ] No private signing material appears in the diff.
 
@@ -30,6 +31,7 @@ Paste the exact commands or GitHub checks used:
 ```bash
 ruff check src tests
 pytest -q
+pytest -q tests/test_receipt_verifier.py
 ```
 
 ## Risk notes
