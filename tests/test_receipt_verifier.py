@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from typing import Any
 
@@ -98,9 +99,8 @@ def _sign(receipt: dict[str, Any], key: dict[str, Any], role: str | None = None)
         "kid": key["kid"],
         "typ": "SENTINEL-JWS",
     }
-    protected_b64 = _b64url_encode(
-        __import__("json").dumps(protected_header, separators=(",", ":")).encode("utf-8")
-    )
+    protected_json = json.dumps(protected_header, separators=(",", ":"))
+    protected_b64 = _b64url_encode(protected_json.encode("utf-8"))
     signing_input = f"{protected_b64}.{payload_b64}".encode("utf-8")
     der_signature = key["private_key"].sign(signing_input, ec.ECDSA(hashes.SHA256()))
     r, s = decode_dss_signature(der_signature)
@@ -192,7 +192,9 @@ def test_rejects_revoked_key() -> None:
     result = verify_receipt(receipt, trust_registry=_registry(marketing, legal))
 
     assert result.status == "NOT_VERIFIED"
-    assert {"KEY_NOT_ACTIVE", "REQUIRED_ROLE_MISSING", "MIN_SIGNATURES_NOT_MET"} <= _codes(result)
+    assert {"KEY_NOT_ACTIVE", "REQUIRED_ROLE_MISSING", "MIN_SIGNATURES_NOT_MET"} <= _codes(
+        result
+    )
 
 
 def test_rejects_role_spoofing() -> None:
