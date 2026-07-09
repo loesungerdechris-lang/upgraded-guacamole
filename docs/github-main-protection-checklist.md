@@ -42,6 +42,19 @@ For changes touching verifier, trust, policy, schema, CI or security docs, revie
 - required negative tests
 - no public overclaims
 
+## Receipt-specific merge blockers
+
+Do not merge if any of these are true:
+
+- `SENTINEL Receipt Verifier Gate` is not green
+- `CI` is not green
+- secret/security scan is not green
+- PR is still draft
+- PR is not mergeable
+- PR removes or narrows negative receipt tests without replacement
+- PR weakens Class A policy behavior
+- PR introduces private signing material or signer-side key generation into verifier code
+
 ## Incident response trigger
 
 Treat any of the following as a security incident until disproven:
