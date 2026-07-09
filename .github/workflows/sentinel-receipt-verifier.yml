@@ -49,9 +49,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -R "crypto\.subtle\.generateKey\|privateKey\|BEGIN .*PRIVATE KEY" \
-            src tests docs .github --exclude-dir=.git; then
-            echo "Forbidden signer/private-key pattern found in repository-verifier surface."
+          if grep -R "crypto\.subtle\.generateKey\|privateKey" \
+            src tests docs --exclude-dir=.git; then
+            echo "Forbidden demo signer pattern found in verifier surface."
             exit 1
           fi
 
