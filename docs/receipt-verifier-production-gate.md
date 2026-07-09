@@ -55,7 +55,7 @@ The dedicated workflow is:
 .github/workflows/sentinel-receipt-verifier.yml
 ```
 
-It runs on pull requests to `main`, pushes to `main`, and manual dispatch.
+It runs on every pull request to `main`, every push to `main`, and manual dispatch.
 
 The workflow performs:
 
@@ -66,6 +66,30 @@ The workflow performs:
 5. demo/browser key-generation guard
 6. ruff lint
 7. receipt verifier red-team tests
+
+## GitHub governance guardrails
+
+This branch also adds repository-level collaboration guardrails:
+
+- `.github/pull_request_template.md` requires an explicit SENTINEL safety-boundary checklist.
+- `.github/CODEOWNERS` maps core verifier, policy, trust, schema, workflow and security files to the repository owner.
+- `SECURITY.md` states the forbidden trust direction and the receipt-verifier negative-test floor.
+- `.gitignore` blocks private JWK files and local `.sentinel/private/` signing workspaces.
+
+Recommended repository settings after merge:
+
+```text
+Require pull request before merging: on
+Require approvals: at least 1
+Require review from Code Owners: on
+Require status checks before merge: on
+Required checks:
+  - CI
+  - SENTINEL Receipt Verifier Gate
+  - SENTINEL Core Secret Scan
+  - SENTINEL Core Security
+Do not allow bypassing the above settings: on, where available
+```
 
 ## Non-goals
 
