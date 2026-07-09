@@ -6,6 +6,18 @@ on:
     branches: ["main"]
   pull_request:
     branches: ["main"]
+    paths:
+      - "src/sentinel_core/**"
+      - "tests/**"
+      - "schemas/**"
+      - "docs/**"
+      - ".github/workflows/**"
+      - ".github/CODEOWNERS"
+      - ".github/pull_request_template.md"
+      - "SECURITY.md"
+      - "README.md"
+      - "pyproject.toml"
+      - ".gitignore"
 
 permissions:
   contents: read
