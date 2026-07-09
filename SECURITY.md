@@ -69,6 +69,19 @@ verifier generates key
 
 Any receipt-verifier change must include or preserve negative tests for tampering, missing required roles, revoked keys, role spoofing, corrupted signatures and weak Class A policy.
 
+## Recommended GitHub security settings
+
+After merging the receipt-verifier gate, configure branch protection or rulesets for `main`:
+
+- require a pull request before merging
+- require at least one approval
+- require review from Code Owners
+- require status checks before merge
+- require the `CI` workflow
+- require the `SENTINEL Receipt Verifier Gate` workflow
+- require existing secret/security scan workflows
+- disallow bypassing the above protections where available
+
 ## Design principle
 
 Security-relevant decisions must be deterministic, auditable and reproducible. Manual overrides must be explicit, documented and reviewed.
