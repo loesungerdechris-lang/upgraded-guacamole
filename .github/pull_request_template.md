@@ -13,6 +13,16 @@ Confirm every applicable item before requesting review:
 - [ ] Any Class A release-control change preserves the two-signature floor or explicitly documents why it does not apply.
 - [ ] Public-facing wording avoids overclaims such as impossible, unbreakable, tamper-proof or fully guaranteed.
 
+## GitHub merge gate
+
+Confirm before merge:
+
+- [ ] PR is not draft.
+- [ ] PR is mergeable.
+- [ ] Required GitHub Actions checks are green.
+- [ ] CODEOWNERS coverage is correct for touched security-sensitive files.
+- [ ] No private signing material appears in the diff.
+
 ## Validation
 
 Paste the exact commands or GitHub checks used:
