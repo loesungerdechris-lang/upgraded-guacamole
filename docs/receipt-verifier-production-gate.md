@@ -75,6 +75,7 @@ This branch also adds repository-level collaboration guardrails:
 - `.github/CODEOWNERS` maps core verifier, policy, trust, schema, workflow and security files to the repository owner.
 - `SECURITY.md` states the forbidden trust direction and the receipt-verifier negative-test floor.
 - `.gitignore` blocks private JWK files and local `.sentinel/private/` signing workspaces.
+- `docs/github-main-protection-checklist.md` defines the required `main` protection checklist after merge.
 
 Recommended repository settings after merge:
 
