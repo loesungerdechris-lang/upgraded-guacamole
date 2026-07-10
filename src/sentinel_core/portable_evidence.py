@@ -18,10 +18,10 @@ from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from urllib.parse import urlparse
 
 from cryptography.hazmat.primitives.asymmetric import ec
 
-from sentinel_core.azure_cli_signing import AzureCliSigningError, validate_azure_key_id
 from sentinel_core.external_signing import (
     ExternalDigestSigner,
     SigningContractError,
@@ -39,6 +39,11 @@ _WORKFLOW_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._:-]{0,127}$")
 _RUN_ID_RE = re.compile(r"^[1-9][0-9]{0,19}$")
 _RUN_ATTEMPT_RE = re.compile(r"^[1-9][0-9]{0,5}$")
 _NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
+_AZURE_VAULT_HOST_RE = re.compile(
+    r"^[a-z0-9](?:[a-z0-9-]{1,22}[a-z0-9])?\.vault\.azure\.net$"
+)
+_KEY_NAME_RE = re.compile(r"^[A-Za-z0-9-]{1,127}$")
+_KEY_VERSION_RE = re.compile(r"^[A-Za-z0-9-]{1,128}$")
 _RFC3339_UTC_RE = re.compile(
     r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
     r"(?:\.[0-9]{1,9})?Z$"
@@ -101,6 +106,38 @@ def _validate_name(value: Any, *, field_name: str) -> str:
     return value
 
 
+def _validate_azure_key_id(key_id: Any) -> str:
+    message = "signer key ID is not a canonical versioned Azure key ID"
+    if not isinstance(key_id, str) or not key_id:
+        raise PortableEvidenceError(message)
+    try:
+        parsed = urlparse(key_id)
+        port = parsed.port
+    except ValueError:
+        raise PortableEvidenceError(message) from None
+    path_parts = [part for part in parsed.path.split("/") if part]
+    canonical_path = "/" + "/".join(path_parts)
+    if (
+        parsed.scheme != "https"
+        or parsed.username is not None
+        or parsed.password is not None
+        or port is not None
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+        or parsed.hostname is None
+        or parsed.netloc != parsed.hostname
+        or _AZURE_VAULT_HOST_RE.fullmatch(parsed.hostname) is None
+        or parsed.path != canonical_path
+        or len(path_parts) != 3
+        or path_parts[0] != "keys"
+        or _KEY_NAME_RE.fullmatch(path_parts[1]) is None
+        or _KEY_VERSION_RE.fullmatch(path_parts[2]) is None
+    ):
+        raise PortableEvidenceError(message)
+    return key_id
+
+
 @dataclass(frozen=True)
 class PortableEvidenceContext:
     """Immutable workflow context bound into the portable public evidence."""
@@ -143,12 +180,7 @@ class PortableSignerBinding:
     signer: ExternalDigestSigner
 
     def validate_for(self, created_at: str) -> None:
-        try:
-            validate_azure_key_id(self.key_id)
-        except AzureCliSigningError:
-            raise PortableEvidenceError(
-                "signer key ID is not a canonical versioned Azure key ID"
-            ) from None
+        _validate_azure_key_id(self.key_id)
         _validate_name(self.signer_role, field_name="signer_role")
         if self.status not in {"active", "revoked"}:
             raise PortableEvidenceError("trust status must be active or revoked")
