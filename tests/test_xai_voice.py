@@ -31,7 +31,7 @@ def test_websocket_url_uses_documented_model_parameter() -> None:
 def test_agent_id_fails_closed_without_explicit_opt_in() -> None:
     config = VoiceSessionConfig()
     with pytest.raises(XaiVoiceConfigurationError, match="undocumented"):
-        config.websocket_url(agent_id="agent_lwUWWfQoAYtPvBjr")
+        config.websocket_url(agent_id="agent_TestAgent123456")
 
 
 def test_agent_id_requires_valid_format_even_with_opt_in() -> None:
@@ -43,9 +43,9 @@ def test_agent_id_requires_valid_format_even_with_opt_in() -> None:
 def test_agent_id_can_be_explicitly_opted_in() -> None:
     config = VoiceSessionConfig()
     assert config.websocket_url(
-        agent_id="agent_lwUWWfQoAYtPvBjr",
+        agent_id="agent_TestAgent123456",
         allow_undocumented_agent_id=True,
-    ).endswith("model=grok-voice-latest&agent_id=agent_lwUWWfQoAYtPvBjr")
+    ).endswith("model=grok-voice-latest&agent_id=agent_TestAgent123456")
 
 
 def test_resumption_requires_valid_conversation_id_and_opt_in() -> None:
