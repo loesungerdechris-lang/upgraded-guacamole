@@ -24,6 +24,7 @@ from sentinel_core.external_signing import (
 from sentinel_core.receipt import verify_receipt
 
 ZERO_HASH = "sha256:" + "0" * 64
+P256_ORDER = int("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551", 16)
 KEY_ID = (
     "https://sentinel-test.vault.azure.net/keys/"
     "sentinel-receipt-es256/0123456789abcdef0123456789abcdef"
@@ -109,11 +110,17 @@ class IsolatedDigestSigner:
         )
 
 
-def _result(*, key_id: str = KEY_ID, algorithm: str = "ES256", size: int = 64) -> Any:
+def _result(
+    *,
+    key_id: str = KEY_ID,
+    algorithm: str = "ES256",
+    size: int = 64,
+    raw_signature: bytes | None = None,
+) -> Any:
     return ExternalSignatureResult(
         algorithm=algorithm,  # type: ignore[arg-type]
         key_id=key_id,
-        signature_b64url=_b64url_encode(b"\x01" * size),
+        signature_b64url=_b64url_encode(raw_signature or b"\x01" * size),
     )
 
 
@@ -211,6 +218,32 @@ def test_rejects_wrong_es256_signature_length() -> None:
 
     with pytest.raises(SigningContractError, match="exactly 64 raw bytes"):
         finalize_receipt_signature(receipt, prepared=prepared, result=_result(size=63))
+
+
+def test_rejects_zero_es256_scalar() -> None:
+    receipt = _unsigned_receipt()
+    prepared = prepare_receipt_signature(receipt, key_id=KEY_ID, signer_role="release_signer")
+    raw_signature = b"\x00" * 32 + (1).to_bytes(32, "big")
+
+    with pytest.raises(SigningContractError, match="P-256 group range"):
+        finalize_receipt_signature(
+            receipt,
+            prepared=prepared,
+            result=_result(raw_signature=raw_signature),
+        )
+
+
+def test_rejects_out_of_range_es256_scalar() -> None:
+    receipt = _unsigned_receipt()
+    prepared = prepare_receipt_signature(receipt, key_id=KEY_ID, signer_role="release_signer")
+    raw_signature = P256_ORDER.to_bytes(32, "big") + (1).to_bytes(32, "big")
+
+    with pytest.raises(SigningContractError, match="P-256 group range"):
+        finalize_receipt_signature(
+            receipt,
+            prepared=prepared,
+            result=_result(raw_signature=raw_signature),
+        )
 
 
 def test_rejects_signed_field_mutation_after_preparation() -> None:
