@@ -125,7 +125,7 @@ jobs:
 
       - name: Run live evidence and independent verifier tests
         run: |
-          pytest -q tests/test_live_evidence.py
+          pytest -q tests/test_live_evidence*.py
           pytest -q tests/test_azure_cli_signing.py tests/test_azure_cli_signing_key_id.py
           pytest -q tests/test_external_signing.py tests/test_external_signing_unicode.py
           pytest -q tests/test_receipt_verifier.py tests/test_receipt_canonical_chain.py
