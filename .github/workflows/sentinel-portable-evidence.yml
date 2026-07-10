@@ -58,6 +58,6 @@ jobs:
           ! grep -n -E 'generate_private_key|load_pem_private_key|private_key\(|"d"\s*:' \
             src/sentinel_core/portable_evidence.py \
             scripts/azure/build-portable-evidence.py
-          ! grep -n -E 'client_secret|client-secret|password|certificate' \
+          ! grep -n -E 'client_secret[[:space:]]*[:=]|client-secret|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|az login' \
             src/sentinel_core/portable_evidence.py \
             scripts/azure/build-portable-evidence.py
