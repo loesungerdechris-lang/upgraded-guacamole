@@ -44,6 +44,13 @@ jobs:
           branch_head="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/feat/xai-voice-boundary" --jq '.object.sha')"
           test "$branch_head" = "$EXPECTED_HEAD"
 
+      - name: Reconstruct reviewed pre-patch source locally
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show 7bda85673da5ae04f92f8036e672b300075206ce:src/sentinel_core/xai_voice.py \
+            > src/sentinel_core/xai_voice.py
+
       - name: Harden patch replacement semantics
         shell: python
         run: |
@@ -57,11 +64,14 @@ jobs:
               raise SystemExit('unexpected replace_one implementation')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
 
-      - name: Apply exact-blob guarded patch
+      - name: Regenerate exact source and missing tests
         run: python scripts/apply_xai_review_fixes.py
 
       - name: Restore one-time patch source
         run: git checkout -- scripts/apply_xai_review_fixes.py
+
+      - name: Prove regenerated source matches published source
+        run: git diff --exit-code -- src/sentinel_core/xai_voice.py
 
       - name: Install test dependencies
         run: |
@@ -77,21 +87,19 @@ jobs:
       - name: Test
         run: pytest -q
 
-      - name: Validate patch scope
+      - name: Validate remaining patch scope
         shell: bash
         run: |
           set -euo pipefail
           git diff --check
           changed="$(git diff --name-only)"
           printf '%s\n' "$changed"
-          test "$changed" = $'src/sentinel_core/xai_voice.py\ntests/test_xai_voice.py'
+          test "$changed" = 'tests/test_xai_voice.py'
 
-      - name: Upload verified source and tests
+      - name: Upload verified missing test file
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: xai-review-fix-${{ github.event.pull_request.head.sha }}
-          path: |
-            src/sentinel_core/xai_voice.py
-            tests/test_xai_voice.py
+          name: xai-review-tests-${{ github.event.pull_request.head.sha }}
+          path: tests/test_xai_voice.py
           if-no-files-found: error
           retention-days: 1
