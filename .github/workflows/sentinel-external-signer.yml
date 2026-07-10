@@ -7,7 +7,7 @@ on:
       - 'src/sentinel_core/external_signing.py'
       - 'src/sentinel_core/receipt.py'
       - 'src/sentinel_core/hashchain.py'
-      - 'tests/test_external_signing.py'
+      - 'tests/test_external_signing*.py'
       - 'docs/external-digest-signer-contract.md'
       - '.github/workflows/sentinel-external-signer.yml'
   push:
@@ -16,7 +16,7 @@ on:
       - 'src/sentinel_core/external_signing.py'
       - 'src/sentinel_core/receipt.py'
       - 'src/sentinel_core/hashchain.py'
-      - 'tests/test_external_signing.py'
+      - 'tests/test_external_signing*.py'
       - 'docs/external-digest-signer-contract.md'
       - '.github/workflows/sentinel-external-signer.yml'
 
@@ -78,5 +78,5 @@ jobs:
 
       - name: Run signer and independent verifier tests
         run: |
-          pytest -q tests/test_external_signing.py
+          pytest -q tests/test_external_signing.py tests/test_external_signing_unicode.py
           pytest -q tests/test_receipt_verifier.py tests/test_receipt_canonical_chain.py
