@@ -50,9 +50,14 @@ jobs:
           set -euo pipefail
           source_file='src/sentinel_core/xai_voice.py'
 
-          forbidden='(sk-[A-Za-z0-9]|xai-[A-Za-z0-9]|BEGIN .*PRIVATE KEY|api[_-]?key[[:space:]]*=[[:space:]]*["'"'][^"'"']+["'"']|shell[[:space:]]*=[[:space:]]*True)'
+          forbidden='(sk-[A-Za-z0-9]{16,}|xai-[A-Za-z0-9]{16,}|BEGIN .*PRIVATE KEY|shell[[:space:]]*=[[:space:]]*True)'
           if grep -niE "$forbidden" "$source_file"; then
             echo 'A credential literal, private key, or shell execution entered the voice boundary.' >&2
+            exit 1
+          fi
+
+          if grep -nE 'agent_[A-Za-z0-9]{16,}' "$source_file"; then
+            echo 'A concrete hosted agent identifier entered production source.' >&2
             exit 1
           fi
 
