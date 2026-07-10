@@ -58,16 +58,21 @@ jobs:
           sources=(
             src/sentinel_core/live_evidence.py
             scripts/azure/build-live-signing-evidence.py
-            .github/workflows/sentinel-azure-live-sign-verify.yml
           )
 
           forbidden='(AZURE_CLIENT_SECRET|ClientSecretCredential|DefaultAzureCredential|InteractiveBrowserCredential|generate_private_key|load_pem_private_key|load_der_private_key|private_bytes|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|client[_-]?secret[[:space:]]*[:=])'
           if grep -nE "$forbidden" "${sources[@]}"; then
-            echo 'Credential acquisition or private-key custody appeared in the live evidence path.' >&2
+            echo 'Credential acquisition or private-key custody appeared in production evidence code.' >&2
             exit 1
           fi
 
           workflow='.github/workflows/sentinel-azure-live-sign-verify.yml'
+          workflow_forbidden='(secrets\.|client-secret:|creds:|AZURE_CLIENT_SECRET:[[:space:]]*\$\{\{|azure/login[^@]*@[^0-9a-f])'
+          if grep -nE "$workflow_forbidden" "$workflow"; then
+            echo 'A credential-backed or mutable live workflow path was detected.' >&2
+            exit 1
+          fi
+
           grep -F 'workflow_dispatch:' "$workflow"
           grep -F "if: github.ref == 'refs/heads/main'" "$workflow"
           grep -F 'environment: sentinel-production' "$workflow"
