@@ -1,0 +1,113 @@
+name: SENTINEL Azure Bootstrap CI
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/azure/**'
+      - 'docs/entra-oidc-keyvault-bootstrap.md'
+      - '.github/workflows/sentinel-azure-*.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/azure/**'
+      - 'docs/entra-oidc-keyvault-bootstrap.md'
+      - '.github/workflows/sentinel-azure-*.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  azure-bootstrap-static:
+    name: azure-bootstrap-static
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Parse PowerShell without execution
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          $scriptPath = (Resolve-Path './scripts/azure/bootstrap-sentinel-oidc.ps1').Path
+          [System.Management.Automation.Language.Parser]::ParseFile(
+              $scriptPath,
+              [ref]$tokens,
+              [ref]$errors
+          ) | Out-Null
+
+          if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              exit 1
+          }
+
+          Write-Host 'PowerShell parser accepted the Azure bootstrap script.'
+
+      - name: Prove dry-run does not invoke Azure CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p .ci-bin
+          cat > .ci-bin/az <<'AZMOCK'
+          #!/usr/bin/env bash
+          echo 'Azure CLI was invoked during dry-run.' >&2
+          exit 99
+          AZMOCK
+          chmod +x .ci-bin/az
+
+          PATH="$PWD/.ci-bin:$PATH" pwsh ./scripts/azure/bootstrap-sentinel-oidc.ps1 \
+            -TenantId '00000000-0000-0000-0000-000000000001' \
+            -SubscriptionId '00000000-0000-0000-0000-000000000002' \
+            -Location 'germanywestcentral' \
+            -VaultName 'sentinel-ci-validation' \
+            | tee dry-run-output.txt
+
+          grep -F 'Dry-run only. Re-run with -Apply after reviewing the plan.' dry-run-output.txt
+
+      - name: Guard against credential material
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          forbidden='(AZURE_CLIENT_SECRET|client-secret[[:space:]]*[:=]|az[[:space:]]+ad[[:space:]]+app[[:space:]]+credential[[:space:]]+(reset|create)|passwordCredentials[^[:alnum:]]+(add|append|create)|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY)'
+
+          if grep -RInE --exclude='sentinel-azure-bootstrap-ci.yml' \
+            "$forbidden" \
+            scripts/azure .github/workflows/sentinel-azure-oidc-smoke.yml; then
+            echo 'Forbidden credential material or credential-creation pattern detected.' >&2
+            exit 1
+          fi
+
+          echo 'Credential-material guard passed.'
+
+      - name: Guard Azure CLI role compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          script='scripts/azure/bootstrap-sentinel-oidc.ps1'
+
+          if grep -nF "'--all'" "$script"; then
+            echo 'Scoped role-assignment queries must not use --all.' >&2
+            exit 1
+          fi
+
+          if grep -nE '^[[:space:]]*Id[[:space:]]*=' "$script"; then
+            echo 'Do not assume Azure CLI preserves a requested custom-role GUID.' >&2
+            exit 1
+          fi
+
+          if grep -nF '$SignerRoleDefinitionId' "$script"; then
+            echo 'Legacy hard-coded custom-role identifier detected.' >&2
+            exit 1
+          fi
+
+          grep -F '$SignerRoleDefinitionGuid = [string]$roleDefinitions[0].name' "$script"
+          grep -F "'--scope', \$vault.id," "$script"
+
+          echo 'Azure CLI role compatibility guard passed.'
