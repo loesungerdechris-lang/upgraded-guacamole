@@ -13,10 +13,16 @@ import re
 import subprocess
 from dataclasses import dataclass, field
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 from sentinel_core.external_signing import DigestSigningRequest, ExternalSignatureResult
 
 _BASE64URL_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_AZURE_VAULT_HOST_RE = re.compile(
+    r"^[a-z0-9](?:[a-z0-9-]{1,22}[a-z0-9])?\.vault\.azure\.net$"
+)
+_KEY_NAME_RE = re.compile(r"^[A-Za-z0-9-]{1,127}$")
+_KEY_VERSION_RE = re.compile(r"^[A-Za-z0-9-]{1,128}$")
 _MAX_RESPONSE_BYTES = 131_072
 
 CommandRunner = Callable[..., subprocess.CompletedProcess[str]]
@@ -37,8 +43,10 @@ def _b64url_decode_strict(value: str, *, field_name: str) -> bytes:
             altchars=b"-_",
             validate=True,
         )
-    except (ValueError, UnicodeEncodeError) as exc:
-        raise AzureCliSigningError(f"{field_name} must be canonical unpadded base64url") from exc
+    except (ValueError, UnicodeEncodeError):
+        raise AzureCliSigningError(
+            f"{field_name} must be canonical unpadded base64url"
+        ) from None
 
     canonical = base64.urlsafe_b64encode(decoded).decode("ascii").rstrip("=")
     if canonical != value:
@@ -46,16 +54,50 @@ def _b64url_decode_strict(value: str, *, field_name: str) -> bytes:
     return decoded
 
 
+def _validate_azure_key_id(key_id: str) -> None:
+    message = "key_id must be an exact versioned Azure Key Vault HTTPS identifier"
+    if not isinstance(key_id, str) or not key_id:
+        raise AzureCliSigningError(message)
+
+    parsed = urlparse(key_id)
+    try:
+        port = parsed.port
+    except ValueError:
+        raise AzureCliSigningError(message) from None
+
+    path_parts = [part for part in parsed.path.split("/") if part]
+    if (
+        parsed.scheme != "https"
+        or parsed.username is not None
+        or parsed.password is not None
+        or port is not None
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+        or parsed.hostname is None
+        or _AZURE_VAULT_HOST_RE.fullmatch(parsed.hostname) is None
+        or len(path_parts) != 3
+        or path_parts[0] != "keys"
+        or _KEY_NAME_RE.fullmatch(path_parts[1]) is None
+        or _KEY_VERSION_RE.fullmatch(path_parts[2]) is None
+    ):
+        raise AzureCliSigningError(message)
+
+
 def _parse_operation_result(stdout: str, *, expected_key_id: str) -> str:
     if not isinstance(stdout, str) or not stdout.strip():
         raise AzureCliSigningError("Azure CLI returned no signing result")
-    if len(stdout.encode("utf-8")) > _MAX_RESPONSE_BYTES:
+    try:
+        response_size = len(stdout.encode("utf-8"))
+    except UnicodeError:
+        raise AzureCliSigningError("Azure CLI returned an invalid signing response") from None
+    if response_size > _MAX_RESPONSE_BYTES:
         raise AzureCliSigningError("Azure CLI signing response exceeded the size limit")
 
     try:
         payload: Any = json.loads(stdout)
-    except (TypeError, ValueError) as exc:
-        raise AzureCliSigningError("Azure CLI returned an invalid signing response") from exc
+    except (TypeError, ValueError):
+        raise AzureCliSigningError("Azure CLI returned an invalid signing response") from None
     if not isinstance(payload, dict):
         raise AzureCliSigningError("Azure CLI returned an invalid signing response")
 
@@ -109,6 +151,7 @@ class AzureCliKeyVaultDigestSigner:
             raise AzureCliSigningError("signing request is invalid")
         if request.algorithm != "ES256":
             raise AzureCliSigningError("Azure CLI signer accepts only ES256")
+        _validate_azure_key_id(request.key_id)
 
         digest = _b64url_decode_strict(
             request.digest_b64url,
@@ -147,12 +190,12 @@ class AzureCliKeyVaultDigestSigner:
                 stdin=subprocess.DEVNULL,
                 env=None,
             )
-        except FileNotFoundError as exc:
-            raise AzureCliSigningError("Azure CLI executable was not found") from exc
-        except subprocess.TimeoutExpired as exc:
-            raise AzureCliSigningError("Azure CLI signing operation timed out") from exc
-        except (OSError, UnicodeError) as exc:
-            raise AzureCliSigningError("Azure CLI signing operation failed") from exc
+        except FileNotFoundError:
+            raise AzureCliSigningError("Azure CLI executable was not found") from None
+        except subprocess.TimeoutExpired:
+            raise AzureCliSigningError("Azure CLI signing operation timed out") from None
+        except (OSError, UnicodeError):
+            raise AzureCliSigningError("Azure CLI signing operation failed") from None
 
         if not isinstance(completed, subprocess.CompletedProcess):
             raise AzureCliSigningError("Azure CLI runner returned an invalid process result")
