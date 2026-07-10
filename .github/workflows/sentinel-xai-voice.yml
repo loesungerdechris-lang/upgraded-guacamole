@@ -1,0 +1,82 @@
+name: SENTINEL xAI Voice Boundary
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - 'src/sentinel_core/xai_voice.py'
+      - 'tests/test_xai_voice.py'
+      - 'docs/xai-voice-agent-security-gate.md'
+      - 'pyproject.toml'
+      - '.github/workflows/sentinel-xai-voice.yml'
+  push:
+    branches: ["main"]
+    paths:
+      - 'src/sentinel_core/xai_voice.py'
+      - 'tests/test_xai_voice.py'
+      - 'docs/xai-voice-agent-security-gate.md'
+      - 'pyproject.toml'
+      - '.github/workflows/sentinel-xai-voice.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  xai-voice-boundary:
+    name: xai-voice-boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Install package with voice and dev extras
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev,voice]
+
+      - name: Guard credential and authority boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_file='src/sentinel_core/xai_voice.py'
+
+          forbidden='(sk-[A-Za-z0-9]|xai-[A-Za-z0-9]|BEGIN .*PRIVATE KEY|api[_-]?key[[:space:]]*=[[:space:]]*["'"'][^"'"']+["'"']|shell[[:space:]]*=[[:space:]]*True)'
+          if grep -niE "$forbidden" "$source_file"; then
+            echo 'A credential literal, private key, or shell execution entered the voice boundary.' >&2
+            exit 1
+          fi
+
+          grep -F '_XAI_REALTIME_ENDPOINT = "wss://api.x.ai/v1/realtime"' "$source_file"
+          grep -F 'XAI_API_KEY' "$source_file"
+          grep -F 'agent_id is undocumented' "$source_file"
+          grep -F 'authoritative": False' "$source_file"
+          grep -F 'turn delivery became ambiguous' "$source_file"
+          grep -F 'compression=None' "$source_file"
+
+      - name: Prove optional runtime dependency is available
+        run: |
+          python - <<'PY'
+          import websockets
+          from sentinel_core.xai_voice import VoiceSessionConfig
+
+          assert websockets.__version__
+          assert VoiceSessionConfig().websocket_url() == (
+              'wss://api.x.ai/v1/realtime?model=grok-voice-latest'
+          )
+          PY
+
+      - name: Lint
+        run: ruff check src tests
+
+      - name: Run xAI voice boundary tests
+        run: pytest -q tests/test_xai_voice.py
