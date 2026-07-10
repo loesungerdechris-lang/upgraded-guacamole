@@ -26,7 +26,7 @@ from sentinel_core.external_signing import (
     SigningContractError,
     sign_receipt_with_external_digest_signer,
 )
-from sentinel_core.hashchain import canonicalize_json, sha256_prefixed
+from sentinel_core.hashchain import canonicalize_json
 from sentinel_core.receipt import parse_rfc3339_utc, verify_receipt
 
 TrustStatus = Literal["active", "revoked"]
@@ -347,7 +347,8 @@ def build_live_evidence_bundle(
     trust_policy.validate_for(context.created_at)
 
     subject_manifest = _build_subject_manifest(context)
-    subject_hash = sha256_prefixed(canonicalize_json(subject_manifest))
+    subject_bytes = _canonical_json_bytes(subject_manifest)
+    subject_hash = _sha256_bytes(subject_bytes)
     unsigned_receipt = _build_receipt(context, subject_hash=subject_hash)
     trust_entry, public_trust_file = _build_trust_entry(metadata, trust_policy)
 
@@ -376,7 +377,7 @@ def build_live_evidence_bundle(
     public_files = {
         "public-trust-entry.json": _canonical_json_bytes(public_trust_file),
         "signed-receipt.json": _canonical_json_bytes(signed_receipt),
-        "subject-manifest.json": _canonical_json_bytes(subject_manifest),
+        "subject-manifest.json": subject_bytes,
         "verification-report.json": _canonical_json_bytes(verification_report),
     }
     evidence_manifest = {
