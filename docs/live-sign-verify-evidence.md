@@ -6,6 +6,8 @@ This workflow is the final repository-side bridge between the protected GitHub O
 
 ```text
 protected main workflow
+  -> explicit authorized dispatch confirmation
+  -> protected environment activation value
   -> public versioned Key Vault metadata
   -> deterministic public subject manifest
   -> canonical SENTINEL receipt
@@ -16,7 +18,7 @@ protected main workflow
   -> public evidence bundle
 ```
 
-The workflow is not a replacement for tenant authorization. It remains unusable until issue #14 provisions the authorized Azure resources and protects the `sentinel-production` GitHub environment.
+The workflow is not a replacement for tenant authorization. It remains unusable until issue #14 provisions the authorized Azure resources, protects the `sentinel-production` GitHub environment, configures a deployment reviewer and deliberately enables live signing.
 
 ## Public evidence bundle
 
@@ -72,6 +74,19 @@ Both must be RFC3339 UTC timestamps. The receipt timestamp must fall inside the 
 
 The trust role is frozen to `release_signer`, the algorithm to `ES256`, and the release receipt requires one valid signature from that role.
 
+## Explicit live activation
+
+Two independent non-secret activation gates are required in addition to the protected GitHub environment:
+
+1. The manual dispatch input `confirm_authorized_execution` must be explicitly set to `true`.
+2. The protected environment variable `SENTINEL_LIVE_SIGNING_ENABLED` must equal exactly:
+
+```text
+AUTHORIZED-BY-DEPLOYMENT-REVIEW
+```
+
+The workflow job is skipped when the dispatch confirmation is false and fails before Azure login when the protected activation value is absent or different. These controls do not replace deployment review; they provide defense in depth against accidental execution or mis-scoped variables.
+
 ## Deterministic subject and receipt
 
 The subject manifest binds:
@@ -106,9 +121,10 @@ The CLI writes all files into a temporary sibling directory, flushes each file, 
 
 The live workflow is:
 
-- manual dispatch only;
+- manual dispatch only with explicit authorized-execution confirmation;
 - restricted to `refs/heads/main`;
 - bound to environment `sentinel-production`;
+- blocked unless the protected activation value is exact;
 - limited to `contents: read` and `id-token: write`;
 - pinned to immutable third-party action SHAs;
 - configured with `persist-credentials: false`;
@@ -129,20 +145,23 @@ SENTINEL_KEY_VAULT_NAME
 SENTINEL_KEY_NAME
 SENTINEL_KEY_NOT_BEFORE
 SENTINEL_KEY_NOT_AFTER
+SENTINEL_LIVE_SIGNING_ENABLED
 ```
 
-These are identifiers and public trust-policy values, not private credentials.
+These are identifiers, public trust-policy values and a non-secret deliberate activation value. They are not private credentials.
 
 ## Activation sequence
 
 1. Complete issue #14 with an authorized Azure administrator.
 2. Protect `sentinel-production` with deliberate deployment review.
 3. Configure only the approved environment values.
-4. Run the existing metadata-only OIDC smoke from `main`.
-5. Register and review the public versioned key/JWK trust metadata.
-6. Run `SENTINEL Azure Live Sign Verify` from `main`.
-7. Review the public artifact, workflow logs and independent verification report.
-8. Record rotation/revocation policy before any production-signing claim.
+4. Set `SENTINEL_LIVE_SIGNING_ENABLED` only after the deployment-review path is verified.
+5. Run the existing metadata-only OIDC smoke from `main`.
+6. Register and review the public versioned key/JWK trust metadata.
+7. Dispatch `SENTINEL Azure Live Sign Verify` from `main` and explicitly confirm authorized execution.
+8. Approve the protected deployment deliberately.
+9. Review the public artifact, workflow logs and independent verification report.
+10. Record rotation/revocation policy before any production-signing claim.
 
 ## Gate
 
