@@ -180,17 +180,20 @@ class _FakeWebSocket:
 
 def test_client_rejects_non_completed_response_status() -> None:
     client = XaiVoiceClient(api_key="test-key", config=VoiceSessionConfig())
-    client._websocket = _FakeWebSocket(
+    websocket = _FakeWebSocket(
         [
-            {"type": "response.created", "response": {"id": "resp_failed"}},
-            {"type": "response.done", "response": {"status": "failed"}},
+  {"type": "response.created", "response": {"id": "resp_failed"}},
+  {"type": "response.done", "response": {"status": "failed"}},
         ]
     )
+    client._websocket = websocket
     client._session_ready = True
 
     with pytest.raises(XaiVoiceRemoteError, match="status=failed"):
         asyncio.run(client.run_turn("hello"))
-    assert len(client._websocket.sent) == 2
+    assert len(websocket.sent) == 2
+    assert websocket.closed is True
+    assert client._websocket is None
 
 
 def test_response_collector_builds_completed_response() -> None:
