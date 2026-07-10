@@ -35,13 +35,29 @@ jobs:
           python -m pip install -e .[dev]
 
       - name: Lint portable evidence implementation
-        run: ruff check src/sentinel_core/portable_evidence.py tests/test_portable_evidence.py
+        run: |
+          ruff check \
+            src/sentinel_core/portable_evidence.py \
+            scripts/azure/build-portable-evidence.py \
+            tests/test_portable_evidence.py \
+            tests/test_build_portable_evidence_script.py
+
+      - name: Parse portable evidence CLI
+        run: python -m py_compile scripts/azure/build-portable-evidence.py
 
       - name: Run portable evidence tests
-        run: pytest -q tests/test_portable_evidence.py
+        run: |
+          pytest -q \
+            tests/test_portable_evidence.py \
+            tests/test_build_portable_evidence_script.py
 
       - name: Guard production source against private key custody
         shell: bash
         run: |
           set -euo pipefail
-          ! grep -n -E 'generate_private_key|load_pem_private_key|private_key\(|"d"\s*:' src/sentinel_core/portable_evidence.py
+          ! grep -n -E 'generate_private_key|load_pem_private_key|private_key\(|"d"\s*:' \
+            src/sentinel_core/portable_evidence.py \
+            scripts/azure/build-portable-evidence.py
+          ! grep -n -E 'client_secret|client-secret|password|certificate' \
+            src/sentinel_core/portable_evidence.py \
+            scripts/azure/build-portable-evidence.py
