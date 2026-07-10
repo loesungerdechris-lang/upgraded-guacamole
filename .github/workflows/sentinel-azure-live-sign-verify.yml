@@ -2,6 +2,12 @@ name: SENTINEL Azure Live Sign Verify
 
 on:
   workflow_dispatch:
+    inputs:
+      confirm_authorized_execution:
+        description: Confirm authorized tenant, protected environment, and deliberate live signing
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -13,7 +19,7 @@ concurrency:
 
 jobs:
   live-sign-verify:
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && inputs.confirm_authorized_execution == true
     runs-on: ubuntu-latest
     environment: sentinel-production
     timeout-minutes: 15
@@ -26,6 +32,7 @@ jobs:
       SENTINEL_KEY_NAME: ${{ vars.SENTINEL_KEY_NAME }}
       SENTINEL_KEY_NOT_BEFORE: ${{ vars.SENTINEL_KEY_NOT_BEFORE }}
       SENTINEL_KEY_NOT_AFTER: ${{ vars.SENTINEL_KEY_NOT_AFTER }}
+      SENTINEL_LIVE_SIGNING_ENABLED: ${{ vars.SENTINEL_LIVE_SIGNING_ENABLED }}
 
     steps:
       - name: Checkout
@@ -58,10 +65,14 @@ jobs:
               'SENTINEL_KEY_NAME',
               'SENTINEL_KEY_NOT_BEFORE',
               'SENTINEL_KEY_NOT_AFTER',
+              'SENTINEL_LIVE_SIGNING_ENABLED',
           )
           missing = [name for name in required if not os.environ.get(name)]
           if missing:
               raise SystemExit('Missing protected environment values: ' + ', '.join(missing))
+
+          if os.environ['SENTINEL_LIVE_SIGNING_ENABLED'] != 'AUTHORIZED-BY-DEPLOYMENT-REVIEW':
+              raise SystemExit('Protected live signing activation value is not approved')
 
           guid = re.compile(
               r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
@@ -178,6 +189,8 @@ jobs:
           {
             echo '## SENTINEL protected live sign and verify'
             echo
+            echo '- Explicit authorized dispatch: confirmed'
+            echo '- Protected live-signing activation: confirmed'
             echo '- GitHub OIDC authentication: passed'
             echo '- Azure tenant/subscription binding: passed'
             echo '- Key Vault digest signing: passed'
