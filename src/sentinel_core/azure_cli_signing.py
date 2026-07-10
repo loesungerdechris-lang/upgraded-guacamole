@@ -59,8 +59,8 @@ def _validate_azure_key_id(key_id: str) -> None:
     if not isinstance(key_id, str) or not key_id:
         raise AzureCliSigningError(message)
 
-    parsed = urlparse(key_id)
     try:
+        parsed = urlparse(key_id)
         port = parsed.port
     except ValueError:
         raise AzureCliSigningError(message) from None
