@@ -89,25 +89,7 @@ jobs:
         run: ruff check src tests
 
       - name: Run xAI voice boundary tests
-        id: voice_tests
-        continue-on-error: true
-        shell: bash
         run: |
-          set -o pipefail
           pytest -q \
             tests/test_xai_voice.py \
-            tests/test_xai_voice_review_regressions.py \
-            2>&1 | tee xai-voice-pytest.log
-
-      - name: Upload focused test report
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: xai-voice-pytest-${{ github.event.pull_request.head.sha || github.sha }}
-          path: xai-voice-pytest.log
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Enforce focused test result
-        if: steps.voice_tests.outcome != 'success'
-        run: exit 1
+            tests/test_xai_voice_review_regressions.py
