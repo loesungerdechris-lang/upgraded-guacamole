@@ -1,8 +1,9 @@
 name: Apply xAI Review Fixes
 
 on:
-  push:
-    branches: ["feat/xai-voice-boundary"]
+  pull_request:
+    branches: ["main"]
+    types: [opened, synchronize, reopened]
     paths:
       - 'scripts/apply_xai_review_fixes.py'
       - '.github/workflows/apply-xai-review-fixes.yml'
@@ -11,17 +12,17 @@ permissions:
   contents: write
 
 concurrency:
-  group: apply-xai-review-fixes
+  group: apply-xai-review-fixes-${{ github.event.pull_request.number }}
   cancel-in-progress: false
 
 jobs:
   apply-and-verify:
-    if: github.actor != 'github-actions[bot]'
+    if: github.event.pull_request.number == 26 && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
-      - name: Checkout exact branch without persisted credentials
+      - name: Checkout exact PR branch without persisted credentials
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: feat/xai-voice-boundary
@@ -36,11 +37,12 @@ jobs:
       - name: Verify branch has not moved
         env:
           GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
         shell: bash
         run: |
           set -euo pipefail
           branch_head="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/feat/xai-voice-boundary" --jq '.object.sha')"
-          test "$branch_head" = "$GITHUB_SHA"
+          test "$branch_head" = "$EXPECTED_HEAD"
 
       - name: Apply exact-blob guarded patch
         run: python scripts/apply_xai_review_fixes.py
@@ -71,6 +73,7 @@ jobs:
       - name: Publish only the verified source and tests
         env:
           GH_TOKEN: ${{ github.token }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
         shell: bash
         run: |
           set -euo pipefail
@@ -79,7 +82,7 @@ jobs:
           tests_path='tests/test_xai_voice.py'
 
           current_head="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${branch}" --jq '.object.sha')"
-          test "$current_head" = "$GITHUB_SHA"
+          test "$current_head" = "$EXPECTED_HEAD"
 
           source_commit="$(gh api --method PUT \
             "repos/${GITHUB_REPOSITORY}/contents/${source_path}" \
