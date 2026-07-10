@@ -42,6 +42,7 @@ _RFC3339_UTC_RE = re.compile(
     r"(?:\.[0-9]{1,9})?Z$"
 )
 _ZERO_HASH = "sha256:" + "0" * 64
+_PUBLIC_KEY_METADATA_FIELDS = frozenset({"kid", "kty", "crv", "key_ops", "x", "y"})
 _PUBLIC_FILE_NAMES = (
     "public-trust-entry.json",
     "signed-receipt.json",
@@ -110,6 +111,10 @@ class PublicKeyMetadata:
 
         if not isinstance(value, Mapping):
             raise LiveEvidenceError("public key metadata must be an object")
+        if frozenset(value.keys()) != _PUBLIC_KEY_METADATA_FIELDS:
+            raise LiveEvidenceError(
+                "public key metadata must contain exactly the approved public fields"
+            )
 
         key_ops = value.get("key_ops")
         if not isinstance(key_ops, list) or not all(
