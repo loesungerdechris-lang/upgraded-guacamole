@@ -6,6 +6,7 @@ on:
     paths:
       - 'src/sentinel_core/xai_voice.py'
       - 'tests/test_xai_voice.py'
+      - 'tests/test_xai_voice_review_regressions.py'
       - 'docs/xai-voice-agent-security-gate.md'
       - 'pyproject.toml'
       - '.github/workflows/sentinel-xai-voice.yml'
@@ -14,6 +15,7 @@ on:
     paths:
       - 'src/sentinel_core/xai_voice.py'
       - 'tests/test_xai_voice.py'
+      - 'tests/test_xai_voice_review_regressions.py'
       - 'docs/xai-voice-agent-security-gate.md'
       - 'pyproject.toml'
       - '.github/workflows/sentinel-xai-voice.yml'
@@ -80,8 +82,14 @@ jobs:
           )
           PY
 
+      - name: Compile
+        run: python -m compileall -q src tests
+
       - name: Lint
         run: ruff check src tests
 
       - name: Run xAI voice boundary tests
-        run: pytest -q tests/test_xai_voice.py
+        run: |
+          pytest -q \
+            tests/test_xai_voice.py \
+            tests/test_xai_voice_review_regressions.py
