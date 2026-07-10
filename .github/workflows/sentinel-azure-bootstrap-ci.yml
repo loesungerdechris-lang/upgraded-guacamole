@@ -85,3 +85,29 @@ jobs:
           fi
 
           echo 'Credential-material guard passed.'
+
+      - name: Guard Azure CLI role compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          script='scripts/azure/bootstrap-sentinel-oidc.ps1'
+
+          if grep -nF "'--all'" "$script"; then
+            echo 'Scoped role-assignment queries must not use --all.' >&2
+            exit 1
+          fi
+
+          if grep -nE '^[[:space:]]*Id[[:space:]]*=' "$script"; then
+            echo 'Do not assume Azure CLI preserves a requested custom-role GUID.' >&2
+            exit 1
+          fi
+
+          if grep -nF '$SignerRoleDefinitionId' "$script"; then
+            echo 'Legacy hard-coded custom-role identifier detected.' >&2
+            exit 1
+          fi
+
+          grep -F '$SignerRoleDefinitionGuid = [string]$roleDefinitions[0].name' "$script"
+          grep -F "'--scope', \$vault.id," "$script"
+
+          echo 'Azure CLI role compatibility guard passed.'
