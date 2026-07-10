@@ -66,6 +66,7 @@ def _validate_azure_key_id(key_id: str) -> None:
         raise AzureCliSigningError(message) from None
 
     path_parts = [part for part in parsed.path.split("/") if part]
+    canonical_path = "/" + "/".join(path_parts)
     if (
         parsed.scheme != "https"
         or parsed.username is not None
@@ -75,7 +76,9 @@ def _validate_azure_key_id(key_id: str) -> None:
         or parsed.query
         or parsed.fragment
         or parsed.hostname is None
+        or parsed.netloc != parsed.hostname
         or _AZURE_VAULT_HOST_RE.fullmatch(parsed.hostname) is None
+        or parsed.path != canonical_path
         or len(path_parts) != 3
         or path_parts[0] != "keys"
         or _KEY_NAME_RE.fullmatch(path_parts[1]) is None
