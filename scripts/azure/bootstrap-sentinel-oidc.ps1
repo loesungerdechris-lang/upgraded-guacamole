@@ -40,7 +40,6 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-$SignerRoleDefinitionId = '6dc31abc-4652-4751-8e2d-e749fe4c7db5'
 $SignerRoleName = 'SENTINEL Key Vault Signer'
 $SignerDataActions = @(
     'Microsoft.KeyVault/vaults/keys/read',
@@ -133,7 +132,7 @@ function Assert-SignerRoleDefinition {
     )
 
     if ($RoleDefinition.roleName -ne $SignerRoleName -or $RoleDefinition.roleType -ne 'CustomRole') {
-        throw "Role definition '$SignerRoleDefinitionId' does not match the frozen SENTINEL custom role identity."
+        throw "Role definition does not match the frozen SENTINEL custom role identity '$SignerRoleName'."
     }
 
     $permissions = @($RoleDefinition.permissions)
@@ -158,20 +157,19 @@ function Assert-SignerRoleDefinition {
 
 function Write-Plan {
     $plan = [ordered]@{
-        mode                       = if ($Apply) { 'apply' } else { 'dry-run' }
-        tenant_id                  = $TenantId
-        subscription_id            = $SubscriptionId
-        location                   = $Location
-        resource_group             = $ResourceGroupName
-        key_vault                  = $VaultName
-        key_name                   = $KeyName
-        entra_app_display_name     = $AppDisplayName
-        github_repository          = "$GitHubOwner/$GitHubRepository"
-        github_environment         = $GitHubEnvironment
-        federated_subject          = $FederatedSubject
-        signer_role_definition_id  = $SignerRoleDefinitionId
-        signer_role_name           = $SignerRoleName
-        signer_data_actions        = $SignerDataActions
+        mode                    = if ($Apply) { 'apply' } else { 'dry-run' }
+        tenant_id               = $TenantId
+        subscription_id         = $SubscriptionId
+        location                = $Location
+        resource_group          = $ResourceGroupName
+        key_vault               = $VaultName
+        key_name                = $KeyName
+        entra_app_display_name  = $AppDisplayName
+        github_repository       = "$GitHubOwner/$GitHubRepository"
+        github_environment      = $GitHubEnvironment
+        federated_subject       = $FederatedSubject
+        signer_role_name        = $SignerRoleName
+        signer_data_actions     = $SignerDataActions
     }
 
     $plan | ConvertTo-Json -Depth 6
@@ -224,16 +222,18 @@ if ([string]::IsNullOrWhiteSpace([string]$resourceGroup.id)) {
 }
 $roleAssignableScope = [string]$resourceGroup.id
 
-$roleDefinitions = @(Invoke-AzJson -Arguments @('role', 'definition', 'list', '--name', $SignerRoleDefinitionId))
+$roleDefinitions = @(
+    Invoke-AzJson -Arguments @('role', 'definition', 'list', '--name', $SignerRoleName) |
+        Where-Object { $_.roleName -eq $SignerRoleName }
+)
 if ($roleDefinitions.Count -gt 1) {
-    throw "More than one role definition matched '$SignerRoleDefinitionId'."
+    throw "More than one exact custom role uses name '$SignerRoleName'."
 }
 
 if ($roleDefinitions.Count -eq 0) {
     Write-Host "Creating least-privilege custom role '$SignerRoleName'."
     $roleDocument = [ordered]@{
         Name             = $SignerRoleName
-        Id               = $SignerRoleDefinitionId
         IsCustom         = $true
         Description      = 'SENTINEL workload signer: read public key metadata and sign/verify digests only.'
         Actions          = @()
@@ -251,21 +251,34 @@ if ($roleDefinitions.Count -eq 0) {
             [System.Text.UTF8Encoding]::new($false)
         )
 
-        $null = Invoke-AzJson -Arguments @(
+        $createdRole = Invoke-AzJson -Arguments @(
             'role', 'definition', 'create',
             '--role-definition', $roleTempFile
         )
+        if ($createdRole.roleName -ne $SignerRoleName) {
+            throw "Azure created an unexpected custom role instead of '$SignerRoleName'."
+        }
     }
     finally {
         Remove-Item -LiteralPath $roleTempFile -Force -ErrorAction SilentlyContinue
     }
 }
 
-$roleDefinitions = @(Invoke-AzJson -Arguments @('role', 'definition', 'list', '--name', $SignerRoleDefinitionId))
+$roleDefinitions = @(
+    Invoke-AzJson -Arguments @('role', 'definition', 'list', '--name', $SignerRoleName) |
+        Where-Object { $_.roleName -eq $SignerRoleName }
+)
 if ($roleDefinitions.Count -ne 1) {
-    throw "Azure did not return exactly one SENTINEL signer role definition."
+    throw "Azure did not return exactly one custom role named '$SignerRoleName'."
 }
 Assert-SignerRoleDefinition -RoleDefinition $roleDefinitions[0] -AssignableScope $roleAssignableScope
+
+$SignerRoleDefinitionGuid = [string]$roleDefinitions[0].name
+$parsedRoleGuid = [guid]::Empty
+if (-not [guid]::TryParse($SignerRoleDefinitionGuid, [ref]$parsedRoleGuid)) {
+    throw "Azure returned an invalid role-definition GUID for '$SignerRoleName'."
+}
+$SignerRoleDefinitionGuid = $parsedRoleGuid.ToString()
 
 $appFilter = "displayName eq '$AppDisplayName'"
 $apps = @(Invoke-AzJson -Arguments @('ad', 'app', 'list', '--filter', $appFilter))
@@ -491,13 +504,12 @@ if ($null -ne $exportableProperty -and [bool]$exportableProperty.Value) {
     throw "Final key state is exportable. Refusing production use."
 }
 
-$expectedRoleDefinitionResourceId = "/subscriptions/$SubscriptionId/providers/Microsoft.Authorization/roleDefinitions/$SignerRoleDefinitionId"
+$expectedRoleDefinitionResourceId = "/subscriptions/$SubscriptionId/providers/Microsoft.Authorization/roleDefinitions/$SignerRoleDefinitionGuid"
 $existingAssignments = @(Invoke-AzJson -Arguments @(
     'role', 'assignment', 'list',
     '--assignee', $servicePrincipal.id,
     '--scope', $vault.id,
-    '--include-inherited',
-    '--all'
+    '--include-inherited'
 ))
 $unexpectedAssignments = @(
     $existingAssignments |
@@ -522,7 +534,7 @@ if ($matchingAssignments.Count -eq 0) {
         'role', 'assignment', 'create',
         '--assignee-object-id', $servicePrincipal.id,
         '--assignee-principal-type', 'ServicePrincipal',
-        '--role', $SignerRoleDefinitionId,
+        '--role', $SignerRoleDefinitionGuid,
         '--scope', $vault.id
     )
 }
@@ -534,8 +546,7 @@ $finalAssignments = @(Invoke-AzJson -Arguments @(
     'role', 'assignment', 'list',
     '--assignee', $servicePrincipal.id,
     '--scope', $vault.id,
-    '--include-inherited',
-    '--all'
+    '--include-inherited'
 ))
 $unexpectedAssignments = @(
     $finalAssignments |
