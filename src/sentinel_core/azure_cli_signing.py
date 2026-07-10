@@ -54,7 +54,9 @@ def _b64url_decode_strict(value: str, *, field_name: str) -> bytes:
     return decoded
 
 
-def _validate_azure_key_id(key_id: str) -> None:
+def validate_azure_key_id(key_id: str) -> None:
+    """Validate one canonical public versioned Azure Key Vault key identifier."""
+
     message = "key_id must be an exact versioned Azure Key Vault HTTPS identifier"
     if not isinstance(key_id, str) or not key_id:
         raise AzureCliSigningError(message)
@@ -154,7 +156,7 @@ class AzureCliKeyVaultDigestSigner:
             raise AzureCliSigningError("signing request is invalid")
         if request.algorithm != "ES256":
             raise AzureCliSigningError("Azure CLI signer accepts only ES256")
-        _validate_azure_key_id(request.key_id)
+        validate_azure_key_id(request.key_id)
 
         digest = _b64url_decode_strict(
             request.digest_b64url,
