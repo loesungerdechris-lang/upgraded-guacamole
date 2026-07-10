@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Mapping
 
+from cryptography.hazmat.primitives.asymmetric import ec
+
 from sentinel_core.azure_cli_signing import AzureCliSigningError, validate_azure_key_id
 from sentinel_core.external_signing import (
     ExternalDigestSigner,
@@ -139,8 +141,18 @@ class PublicKeyMetadata:
         if len(self.key_ops) != 2 or set(self.key_ops) != {"sign", "verify"}:
             raise LiveEvidenceError("public key operations must be exactly sign and verify")
 
-        _b64url_decode_32(self.x, field_name="public JWK x")
-        _b64url_decode_32(self.y, field_name="public JWK y")
+        x_bytes = _b64url_decode_32(self.x, field_name="public JWK x")
+        y_bytes = _b64url_decode_32(self.y, field_name="public JWK y")
+        try:
+            ec.EllipticCurvePublicNumbers(
+                int.from_bytes(x_bytes, "big"),
+                int.from_bytes(y_bytes, "big"),
+                ec.SECP256R1(),
+            ).public_key()
+        except ValueError:
+            raise LiveEvidenceError(
+                "public JWK coordinates do not form a valid P-256 point"
+            ) from None
 
     def public_jwk(self) -> dict[str, Any]:
         """Return the public-only JWK used by the independent verifier."""
