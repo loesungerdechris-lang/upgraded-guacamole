@@ -21,17 +21,26 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Checkout exact branch
+      - name: Checkout exact branch without persisted credentials
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           ref: feat/xai-voice-boundary
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.11'
+
+      - name: Verify branch has not moved
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch_head="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/feat/xai-voice-boundary" --jq '.object.sha')"
+          test "$branch_head" = "$GITHUB_SHA"
 
       - name: Apply exact-blob guarded patch
         run: python scripts/apply_xai_review_fixes.py
@@ -59,18 +68,36 @@ jobs:
           printf '%s\n' "$changed"
           test "$changed" = $'src/sentinel_core/xai_voice.py\ntests/test_xai_voice.py'
 
-      - name: Remove one-time repair machinery
-        run: |
-          rm scripts/apply_xai_review_fixes.py
-          rm .github/workflows/apply-xai-review-fixes.yml
-
-      - name: Commit verified fix
+      - name: Publish only the verified source and tests
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git diff --cached --check
-          git commit -m 'fix: close xAI voice review gaps'
-          git push origin HEAD:feat/xai-voice-boundary
+          branch='feat/xai-voice-boundary'
+          source_path='src/sentinel_core/xai_voice.py'
+          tests_path='tests/test_xai_voice.py'
+
+          current_head="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${branch}" --jq '.object.sha')"
+          test "$current_head" = "$GITHUB_SHA"
+
+          source_commit="$(gh api --method PUT \
+            "repos/${GITHUB_REPOSITORY}/contents/${source_path}" \
+            -f message='fix: preserve fail-closed xAI voice boundaries' \
+            -f branch="$branch" \
+            -f sha='ffd06a54d5ac14c499c3478335fc035ed691ade0' \
+            -f content="$(base64 -w0 "$source_path")" \
+            --jq '.commit.sha')"
+
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${branch}" --jq '.object.sha')" = "$source_commit"
+
+          tests_commit="$(gh api --method PUT \
+            "repos/${GITHUB_REPOSITORY}/contents/${tests_path}" \
+            -f message='test: cover xAI voice review regressions' \
+            -f branch="$branch" \
+            -f sha='678e0705208041776b0974daf7d613ff7c7a8376' \
+            -f content="$(base64 -w0 "$tests_path")" \
+            --jq '.commit.sha')"
+
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${branch}" --jq '.object.sha')" = "$tests_commit"
+          printf 'published_verified_head=%s\n' "$tests_commit"
