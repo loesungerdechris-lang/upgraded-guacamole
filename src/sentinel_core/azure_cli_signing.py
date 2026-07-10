@@ -197,6 +197,8 @@ class AzureCliKeyVaultDigestSigner:
             raise AzureCliSigningError("Azure CLI executable was not found") from None
         except subprocess.TimeoutExpired:
             raise AzureCliSigningError("Azure CLI signing operation timed out") from None
+        except subprocess.SubprocessError:
+            raise AzureCliSigningError("Azure CLI signing operation failed") from None
         except (OSError, UnicodeError):
             raise AzureCliSigningError("Azure CLI signing operation failed") from None
 
