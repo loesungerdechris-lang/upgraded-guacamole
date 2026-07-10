@@ -30,9 +30,12 @@ _ALLOWED_SAMPLE_RATES = frozenset({8000, 16000, 22050, 24000, 32000, 44100, 4800
 _ALLOWED_REASONING_EFFORTS = frozenset({"high", "none"})
 _AGENT_ID_RE = re.compile(r"^agent_[A-Za-z0-9]{8,128}$")
 _CONVERSATION_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,256}$")
+_RESPONSE_ID_RE = re.compile(r"^[A-Za-z0-9._:-]{1,256}$")
 _SAFE_FILE_COMPONENT_RE = re.compile(r"[^A-Za-z0-9._-]+")
 _DEFAULT_MAX_EVENT_BYTES = 2 * 1024 * 1024
 _DEFAULT_MAX_AUDIO_BYTES = 64 * 1024 * 1024
+_DEFAULT_MAX_TRANSCRIPT_BYTES = 2 * 1024 * 1024
+_DEFAULT_MAX_RESPONSE_EVENTS = 10_000
 _DEFAULT_INSTRUCTIONS = (
     "You are Ara, the calm voice interface for SENTINEL. "
     "Treat voice as a non-authoritative interaction layer. "
@@ -70,6 +73,8 @@ class VoiceSessionConfig:
     resumption_enabled: bool = False
     max_event_bytes: int = _DEFAULT_MAX_EVENT_BYTES
     max_audio_bytes: int = _DEFAULT_MAX_AUDIO_BYTES
+    max_transcript_bytes: int = _DEFAULT_MAX_TRANSCRIPT_BYTES
+    max_response_events: int = _DEFAULT_MAX_RESPONSE_EVENTS
     open_timeout_seconds: float = 15.0
     receive_timeout_seconds: float = 120.0
     close_timeout_seconds: float = 5.0
@@ -90,6 +95,18 @@ class VoiceSessionConfig:
             raise XaiVoiceConfigurationError("resumption_enabled must be boolean")
         _validate_int_range(self.max_event_bytes, "max_event_bytes", 1024, 16 * 1024 * 1024)
         _validate_int_range(self.max_audio_bytes, "max_audio_bytes", 1024, 512 * 1024 * 1024)
+        _validate_int_range(
+            self.max_transcript_bytes,
+            "max_transcript_bytes",
+            1024,
+            16 * 1024 * 1024,
+        )
+        _validate_int_range(
+            self.max_response_events,
+            "max_response_events",
+            100,
+            100_000,
+        )
         _validate_timeout(self.open_timeout_seconds, "open_timeout_seconds", maximum=120.0)
         _validate_timeout(self.receive_timeout_seconds, "receive_timeout_seconds", maximum=1800.0)
         _validate_timeout(self.close_timeout_seconds, "close_timeout_seconds", maximum=120.0)
@@ -185,10 +202,14 @@ class ResponseCollector:
 
     sample_rate: int = 24000
     max_audio_bytes: int = _DEFAULT_MAX_AUDIO_BYTES
+    max_transcript_bytes: int = _DEFAULT_MAX_TRANSCRIPT_BYTES
+    max_response_events: int = _DEFAULT_MAX_RESPONSE_EVENTS
     _response_id: str | None = field(default=None, init=False)
     _transcript_parts: list[str] = field(default_factory=list, init=False)
     _audio_parts: list[bytes] = field(default_factory=list, init=False)
     _audio_bytes: int = field(default=0, init=False)
+    _transcript_bytes: int = field(default=0, init=False)
+    _event_count: int = field(default=0, init=False)
     _audio_done_seen: bool = field(default=False, init=False)
     _event_types: list[str] = field(default_factory=list, init=False)
 
@@ -196,6 +217,18 @@ class ResponseCollector:
         if self.sample_rate not in _ALLOWED_SAMPLE_RATES:
             raise XaiVoiceConfigurationError("collector sample_rate is unsupported")
         _validate_int_range(self.max_audio_bytes, "max_audio_bytes", 1024, 512 * 1024 * 1024)
+        _validate_int_range(
+            self.max_transcript_bytes,
+            "max_transcript_bytes",
+            1024,
+            16 * 1024 * 1024,
+        )
+        _validate_int_range(
+            self.max_response_events,
+            "max_response_events",
+            100,
+            100_000,
+        )
 
     def consume(self, event: Mapping[str, Any]) -> VoiceResponse | None:
         """Consume one validated event and return a response at response.done."""
@@ -203,6 +236,9 @@ class ResponseCollector:
         event_type = event.get("type")
         if not isinstance(event_type, str) or not event_type:
             raise XaiVoiceProtocolError("event.type must be a non-empty string")
+        self._event_count += 1
+        if self._event_count > self.max_response_events:
+            raise XaiVoiceProtocolError("response exceeded the configured event-count limit")
         self._event_types.append(event_type)
 
         if event_type == "response.created":
@@ -216,6 +252,8 @@ class ResponseCollector:
             response_id = response.get("id")
             if not isinstance(response_id, str) or not response_id:
                 raise XaiVoiceProtocolError("response.created is missing a response id")
+            if _RESPONSE_ID_RE.fullmatch(response_id) is None:
+                raise XaiVoiceProtocolError("response.created contains an invalid response id")
             self._response_id = response_id
             return None
 
@@ -224,7 +262,14 @@ class ResponseCollector:
             delta = event.get("delta")
             if not isinstance(delta, str):
                 raise XaiVoiceProtocolError("transcript delta must be a string")
+            delta_bytes = len(delta.encode("utf-8"))
+            new_size = self._transcript_bytes + delta_bytes
+            if new_size > self.max_transcript_bytes:
+                raise XaiVoiceProtocolError(
+                    "response transcript exceeded the configured size limit"
+                )
             self._transcript_parts.append(delta)
+            self._transcript_bytes = new_size
             return None
 
         if event_type == "response.output_audio.delta":
@@ -238,6 +283,8 @@ class ResponseCollector:
                 raise XaiVoiceProtocolError("audio delta is not canonical base64") from None
             if not chunk:
                 raise XaiVoiceProtocolError("audio delta decoded to an empty chunk")
+            if base64.b64encode(chunk).decode("ascii") != delta:
+                raise XaiVoiceProtocolError("audio delta is not canonical base64")
             new_size = self._audio_bytes + len(chunk)
             if new_size > self.max_audio_bytes:
                 raise XaiVoiceProtocolError("response audio exceeded the configured size limit")
@@ -259,10 +306,13 @@ class ResponseCollector:
                 if candidate_status is not None and not isinstance(candidate_status, str):
                     raise XaiVoiceProtocolError("response.done status must be a string or null")
                 status = candidate_status
+            pcm_audio = b"".join(self._audio_parts)
+            if len(pcm_audio) % 2 != 0:
+                raise XaiVoiceProtocolError("completed PCM16 audio has an odd byte count")
             completed = VoiceResponse(
                 response_id=self._response_id or "unknown",
                 transcript="".join(self._transcript_parts),
-                pcm_audio=b"".join(self._audio_parts),
+                pcm_audio=pcm_audio,
                 sample_rate=self.sample_rate,
                 status=status,
                 audio_done_seen=self._audio_done_seen,
@@ -280,6 +330,8 @@ class ResponseCollector:
         self._transcript_parts.clear()
         self._audio_parts.clear()
         self._audio_bytes = 0
+        self._transcript_bytes = 0
+        self._event_count = 0
         self._audio_done_seen = False
         self._event_types.clear()
 
@@ -307,7 +359,7 @@ def parse_server_event(raw: str | bytes, *, max_event_bytes: int) -> dict[str, A
     if len(encoded) > max_event_bytes:
         raise XaiVoiceProtocolError("server event exceeded the configured size limit")
     try:
-        event = json.loads(text)
+        event = json.loads(text, object_pairs_hook=_reject_duplicate_object_pairs)
     except (TypeError, ValueError):
         raise XaiVoiceProtocolError("server event is not valid JSON") from None
     if not isinstance(event, dict):
@@ -316,6 +368,15 @@ def parse_server_event(raw: str | bytes, *, max_event_bytes: int) -> dict[str, A
     if not isinstance(event_type, str) or not event_type:
         raise XaiVoiceProtocolError("server event is missing type")
     return event
+
+
+def _reject_duplicate_object_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise XaiVoiceProtocolError("server event contains duplicate JSON keys")
+        result[key] = value
+    return result
 
 
 def build_user_turn_events(prompt: str) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -350,6 +411,10 @@ def persist_voice_response(
         )
     if not isinstance(output_dir, Path):
         raise XaiVoiceConfigurationError("output_dir must be a pathlib.Path")
+    if output_dir.is_symlink():
+        raise XaiVoiceConfigurationError("output_dir must not be a symbolic link")
+    if output_dir.exists() and not output_dir.is_dir():
+        raise XaiVoiceConfigurationError("output_dir must be a directory")
     output_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
     try:
         output_dir.chmod(0o700)
@@ -474,12 +539,13 @@ class XaiVoiceClient:
         self._websocket: Any = None
         self._session_ready = False
 
+        # Validate undocumented options before any network activity.
         self._config.websocket_url(
             agent_id=self._agent_id,
             allow_undocumented_agent_id=self._allow_undocumented_agent_id,
         )
 
-    async def __aenter__(self) -> "XaiVoiceClient":
+    async def __aenter__(self) -> XaiVoiceClient:
         await self.connect()
         return self
 
@@ -551,6 +617,8 @@ class XaiVoiceClient:
         collector = ResponseCollector(
             sample_rate=self._config.sample_rate,
             max_audio_bytes=self._config.max_audio_bytes,
+            max_transcript_bytes=self._config.max_transcript_bytes,
+            max_response_events=self._config.max_response_events,
         )
         while True:
             event = await self._receive_event()
@@ -564,6 +632,11 @@ class XaiVoiceClient:
                     self._transcript_sink(delta)
             completed = collector.consume(event)
             if completed is not None:
+                if completed.status not in {None, "completed"}:
+                    status = _safe_remote_field(completed.status, max_length=80) or "unknown"
+                    raise XaiVoiceRemoteError(
+                        f"xAI response ended without completion; status={status}"
+                    )
                 return completed
 
     async def _wait_for_session_ready(self) -> None:
@@ -630,8 +703,19 @@ def _remote_error(event: Mapping[str, Any]) -> XaiVoiceRemoteError:
 def _safe_remote_field(value: Any, *, max_length: int) -> str | None:
     if not isinstance(value, str):
         return None
-    cleaned = " ".join(value.replace("\x00", "").split())
+    cleaned = " ".join(_safe_terminal_text(value).split())
     return cleaned[:max_length] or None
+
+
+def _safe_terminal_text(value: str) -> str:
+    safe_characters: list[str] = []
+    for character in value:
+        codepoint = ord(character)
+        if character in {"\n", "\r", "\t"}:
+            safe_characters.append(character)
+        elif codepoint >= 32 and not 127 <= codepoint <= 159:
+            safe_characters.append(character)
+    return "".join(safe_characters)
 
 
 def _validate_non_empty_text(value: Any, field_name: str, *, max_length: int) -> None:
@@ -679,28 +763,38 @@ def _sha256_prefixed(value: bytes) -> str:
 
 
 def _atomic_write(path: Path, data: bytes) -> None:
-    if path.exists():
+    if path.exists() or path.is_symlink():
         raise FileExistsError(f"refusing to overwrite existing artifact: {path.name}")
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
     temporary_path = Path(temporary_name)
     try:
         os.chmod(temporary_path, 0o600)
         with os.fdopen(descriptor, "wb") as handle:
+            descriptor = -1
             handle.write(data)
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary_path, path)
+        try:
+            os.link(temporary_path, path)
+        except FileExistsError:
+            raise FileExistsError(
+                f"refusing to overwrite existing artifact: {path.name}"
+            ) from None
+        except OSError as exc:
+            raise XaiVoiceConfigurationError(
+                "artifact filesystem does not support secure no-clobber linking"
+            ) from exc
         try:
             path.chmod(0o600)
         except OSError:
             pass
-    except Exception:
-        try:
-            os.close(descriptor)
-        except OSError:
-            pass
+    finally:
+        if descriptor >= 0:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
         temporary_path.unlink(missing_ok=True)
-        raise
 
 
 def _read_instructions(path_value: str | None) -> str:
@@ -760,7 +854,7 @@ def _build_argument_parser() -> argparse.ArgumentParser:
 
 
 def _write_transcript_delta(delta: str) -> None:
-    sys.stdout.write(delta)
+    sys.stdout.write(_safe_terminal_text(delta))
     sys.stdout.flush()
 
 
