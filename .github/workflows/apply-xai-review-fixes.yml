@@ -5,7 +5,6 @@ on:
     branches: ["main"]
     types: [opened, synchronize, reopened]
     paths:
-      - 'scripts/apply_xai_review_fixes.py'
       - '.github/workflows/apply-xai-review-fixes.yml'
 
 permissions:
@@ -44,34 +43,49 @@ jobs:
           branch_head="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/feat/xai-voice-boundary" --jq '.object.sha')"
           test "$branch_head" = "$EXPECTED_HEAD"
 
-      - name: Reconstruct reviewed pre-patch source locally
-        shell: bash
-        run: |
-          set -euo pipefail
-          git show 7bda85673da5ae04f92f8036e672b300075206ce:src/sentinel_core/xai_voice.py \
-            > src/sentinel_core/xai_voice.py
-
-      - name: Harden patch replacement semantics
+      - name: Correct the exact stale socket assertion
         shell: python
         run: |
           from pathlib import Path
 
-          path = Path('scripts/apply_xai_review_fixes.py')
+          path = Path('tests/test_xai_voice.py')
           text = path.read_text(encoding='utf-8')
-          old = "        replacement,\n        text,\n"
-          new = "        lambda _match: replacement,\n        text,\n"
+          old = '''def test_client_rejects_non_completed_response_status() -> None:
+              client = XaiVoiceClient(api_key="test-key", config=VoiceSessionConfig())
+              client._websocket = _FakeWebSocket(
+                  [
+                      {"type": "response.created", "response": {"id": "resp_failed"}},
+                      {"type": "response.done", "response": {"status": "failed"}},
+                  ]
+              )
+              client._session_ready = True
+
+              with pytest.raises(XaiVoiceRemoteError, match="status=failed"):
+                  asyncio.run(client.run_turn("hello"))
+              assert len(client._websocket.sent) == 2
+          '''
+          new = '''def test_client_rejects_non_completed_response_status() -> None:
+              client = XaiVoiceClient(api_key="test-key", config=VoiceSessionConfig())
+              websocket = _FakeWebSocket(
+                  [
+                      {"type": "response.created", "response": {"id": "resp_failed"}},
+                      {"type": "response.done", "response": {"status": "failed"}},
+                  ]
+              )
+              client._websocket = websocket
+              client._session_ready = True
+
+              with pytest.raises(XaiVoiceRemoteError, match="status=failed"):
+                  asyncio.run(client.run_turn("hello"))
+              assert len(websocket.sent) == 2
+              assert websocket.closed is True
+              assert client._websocket is None
+          '''
+          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines()) + '\n'
+          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
           if text.count(old) != 1:
-              raise SystemExit('unexpected replace_one implementation')
+              raise SystemExit('stale socket assertion block did not match exactly')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
-
-      - name: Regenerate exact source and corrected existing tests
-        run: python scripts/apply_xai_review_fixes.py
-
-      - name: Restore one-time patch source
-        run: git checkout -- scripts/apply_xai_review_fixes.py
-
-      - name: Prove regenerated source matches published source
-        run: git diff --exit-code -- src/sentinel_core/xai_voice.py
 
       - name: Install test dependencies
         run: |
@@ -87,7 +101,7 @@ jobs:
       - name: Test
         run: pytest -q
 
-      - name: Validate remaining patch scope
+      - name: Validate patch scope
         shell: bash
         run: |
           set -euo pipefail
@@ -96,7 +110,7 @@ jobs:
           printf '%s\n' "$changed"
           test "$changed" = 'tests/test_xai_voice.py'
 
-      - name: Publish verified corrected existing tests
+      - name: Publish verified corrected existing test
         env:
           GH_TOKEN: ${{ github.token }}
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
@@ -104,18 +118,15 @@ jobs:
         run: |
           set -euo pipefail
           branch='feat/xai-voice-boundary'
-          tests_path='tests/test_xai_voice.py'
-
+          path='tests/test_xai_voice.py'
           current_head="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${branch}" --jq '.object.sha')"
           test "$current_head" = "$EXPECTED_HEAD"
-
-          tests_commit="$(gh api --method PUT \
-            "repos/${GITHUB_REPOSITORY}/contents/${tests_path}" \
+          commit="$(gh api --method PUT \
+            "repos/${GITHUB_REPOSITORY}/contents/${path}" \
             -f message='test: align xAI fail-closed socket expectation' \
             -f branch="$branch" \
             -f sha='678e0705208041776b0974daf7d613ff7c7a8376' \
-            -f content="$(base64 -w0 "$tests_path")" \
+            -f content="$(base64 -w0 "$path")" \
             --jq '.commit.sha')"
-
-          test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${branch}" --jq '.object.sha')" = "$tests_commit"
-          printf 'published_verified_head=%s\n' "$tests_commit"
+          test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${branch}" --jq '.object.sha')" = "$commit"
+          printf 'published_verified_head=%s\n' "$commit"
