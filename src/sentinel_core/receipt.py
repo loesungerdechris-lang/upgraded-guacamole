@@ -23,7 +23,7 @@ from sentinel_core.hashchain import canonicalize_json, sha256_prefixed
 ReceiptStatus = Literal["RC_VERIFIED", "NOT_VERIFIED", "CONFIG_ERROR"]
 IssueSeverity = Literal["error", "warning", "info"]
 
-_SHA256_URN_RE = re.compile(r"^sha256:[0-9a-fA-F]{64}$")
+_SHA256_URN_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 @dataclass(frozen=True)
@@ -267,12 +267,13 @@ def verify_receipt(
             "release_class must be A, B or C.",
         )
 
-    if not isinstance(chain.get("sequence"), int):
+    sequence = chain.get("sequence")
+    if isinstance(sequence, bool) or not isinstance(sequence, int):
         _issue(
             issues,
             "error",
             "CHAIN_SEQUENCE_INVALID",
-            "chain.sequence must be an integer.",
+            "chain.sequence must be an integer and must not be a boolean.",
         )
 
     previous_hash = chain.get("previous_hash")
@@ -281,7 +282,7 @@ def verify_receipt(
             issues,
             "error",
             "PREVIOUS_HASH_INVALID",
-            "chain.previous_hash must be sha256: followed by exactly 64 hex characters.",
+            "chain.previous_hash must be sha256: followed by exactly 64 lowercase hex characters.",
         )
 
     expected_hash = receipt_hash(receipt)
