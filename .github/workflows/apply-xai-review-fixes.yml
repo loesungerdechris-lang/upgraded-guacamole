@@ -9,7 +9,7 @@ on:
       - '.github/workflows/apply-xai-review-fixes.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: apply-xai-review-fixes-${{ github.event.pull_request.number }}
@@ -86,37 +86,12 @@ jobs:
           printf '%s\n' "$changed"
           test "$changed" = $'src/sentinel_core/xai_voice.py\ntests/test_xai_voice.py'
 
-      - name: Publish only the verified source and tests
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          branch='feat/xai-voice-boundary'
-          source_path='src/sentinel_core/xai_voice.py'
-          tests_path='tests/test_xai_voice.py'
-
-          current_head="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${branch}" --jq '.object.sha')"
-          test "$current_head" = "$EXPECTED_HEAD"
-
-          source_commit="$(gh api --method PUT \
-            "repos/${GITHUB_REPOSITORY}/contents/${source_path}" \
-            -f message='fix: preserve fail-closed xAI voice boundaries' \
-            -f branch="$branch" \
-            -f sha='ffd06a54d5ac14c499c3478335fc035ed691ade0' \
-            -f content="$(base64 -w0 "$source_path")" \
-            --jq '.commit.sha')"
-
-          test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${branch}" --jq '.object.sha')" = "$source_commit"
-
-          tests_commit="$(gh api --method PUT \
-            "repos/${GITHUB_REPOSITORY}/contents/${tests_path}" \
-            -f message='test: cover xAI voice review regressions' \
-            -f branch="$branch" \
-            -f sha='678e0705208041776b0974daf7d613ff7c7a8376' \
-            -f content="$(base64 -w0 "$tests_path")" \
-            --jq '.commit.sha')"
-
-          test "$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${branch}" --jq '.object.sha')" = "$tests_commit"
-          printf 'published_verified_head=%s\n' "$tests_commit"
+      - name: Upload verified source and tests
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: xai-review-fix-${{ github.event.pull_request.head.sha }}
+          path: |
+            src/sentinel_core/xai_voice.py
+            tests/test_xai_voice.py
+          if-no-files-found: error
+          retention-days: 1
