@@ -78,6 +78,7 @@ Preparation does not mutate the input receipt and does not call an external serv
 - the returned versioned `kid` exactly matches the request;
 - the signature is canonical unpadded base64url;
 - the decoded ES256 signature is exactly 64 raw bytes;
+- both raw ES256 scalars `r` and `s` are integers in the P-256 group range `1..n-1`;
 - the receipt does not already contain the same `kid`.
 
 Finalization returns a copied receipt, sets the canonical receipt hash and appends one JWS-style signature object. It does not mutate the caller's receipt and does not add any `verified` state.
@@ -98,6 +99,7 @@ The test suite uses an isolated ephemeral key solely to prove that:
 
 - the external boundary receives only the digest request;
 - prehashed ES256 output is encoded in the expected raw 64-byte form;
+- zero and out-of-range P-256 scalars are rejected before attachment;
 - the existing verifier independently accepts valid output;
 - structurally valid but cryptographically unrelated output remains `NOT_VERIFIED`.
 
