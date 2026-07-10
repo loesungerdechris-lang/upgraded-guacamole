@@ -26,6 +26,7 @@ SigningAlgorithm = Literal["ES256"]
 
 _BASE64URL_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _SIGNER_ROLE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+_P256_ORDER = int("ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551", 16)
 
 
 class SigningContractError(ValueError):
@@ -156,6 +157,11 @@ def _validate_prepared(prepared: PreparedReceiptSignature) -> None:
     except (ValueError, UnicodeDecodeError) as exc:
         raise SigningContractError("prepared protected header is not valid JSON") from exc
 
+    try:
+        payload_text = payload_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise SigningContractError("prepared payload is not valid UTF-8") from exc
+
     expected_header = {
         "alg": "ES256",
         "kid": prepared.request.key_id,
@@ -165,7 +171,7 @@ def _validate_prepared(prepared: PreparedReceiptSignature) -> None:
         raise SigningContractError("prepared protected header does not match the frozen profile")
     if canonicalize_json(protected_header).encode("utf-8") != protected_bytes:
         raise SigningContractError("prepared protected header is not canonical")
-    if payload_bytes.decode("utf-8") != prepared.canonical_payload:
+    if payload_text != prepared.canonical_payload:
         raise SigningContractError("prepared payload does not match the canonical receipt")
 
     expected_signing_input = f"{prepared.protected_b64url}.{prepared.payload_b64url}"
@@ -278,6 +284,11 @@ def finalize_receipt_signature(
     )
     if len(raw_signature) != 64:
         raise SigningContractError("ES256 external signature must be exactly 64 raw bytes")
+
+    r = int.from_bytes(raw_signature[:32], "big")
+    s = int.from_bytes(raw_signature[32:], "big")
+    if not (1 <= r < _P256_ORDER and 1 <= s < _P256_ORDER):
+        raise SigningContractError("ES256 signature scalars must be in the P-256 group range")
 
     signed_receipt = deepcopy(receipt)
     signed_receipt["chain"]["receipt_hash"] = prepared.receipt_hash
