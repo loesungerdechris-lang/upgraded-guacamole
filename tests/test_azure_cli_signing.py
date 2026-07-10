@@ -176,7 +176,7 @@ def test_accepts_cli_result_alias_for_compatibility() -> None:
     ("payload", "message"),
     [
         ([], "invalid signing response"),
-        ({}, "exactly one signature value"),
+        ({"kid": KEY_ID}, "exactly one signature value"),
         ({"kid": KEY_ID, "value": _signature_value(), "result": _signature_value()}, "exactly one"),
         ({"kid": KEY_ID + "-wrong", "value": _signature_value()}, "unexpected versioned key"),
         ({"kid": 123, "value": _signature_value()}, "unexpected versioned key"),
