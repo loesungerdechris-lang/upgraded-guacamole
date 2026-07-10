@@ -44,8 +44,24 @@ jobs:
           branch_head="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/feat/xai-voice-boundary" --jq '.object.sha')"
           test "$branch_head" = "$EXPECTED_HEAD"
 
+      - name: Harden patch replacement semantics
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('scripts/apply_xai_review_fixes.py')
+          text = path.read_text(encoding='utf-8')
+          old = "        replacement,\n        text,\n"
+          new = "        lambda _match: replacement,\n        text,\n"
+          if text.count(old) != 1:
+              raise SystemExit('unexpected replace_one implementation')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
       - name: Apply exact-blob guarded patch
         run: python scripts/apply_xai_review_fixes.py
+
+      - name: Restore one-time patch source
+        run: git checkout -- scripts/apply_xai_review_fixes.py
 
       - name: Install test dependencies
         run: |
