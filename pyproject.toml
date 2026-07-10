@@ -22,6 +22,12 @@ dev = [
   "pytest>=8.0.0",
   "ruff>=0.5.0"
 ]
+voice = [
+  "websockets>=15.0,<17.0"
+]
+
+[project.scripts]
+sentinel-xai-voice = "sentinel_core.xai_voice:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
