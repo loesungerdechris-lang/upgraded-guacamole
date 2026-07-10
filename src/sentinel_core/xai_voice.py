@@ -403,7 +403,7 @@ def persist_voice_response(
     persist_audio: bool,
     persist_transcript: bool,
 ) -> PersistedVoiceArtifacts:
-    """Persist explicitly requested artifacts atomically with restrictive permissions."""
+    "Persist an explicitly requested response as one no-clobber artifact set."
 
     if not persist_audio and not persist_transcript:
         raise XaiVoiceConfigurationError(
@@ -422,22 +422,30 @@ def persist_voice_response(
         pass
 
     safe_id = _safe_file_component(response.response_id)
-    wav_path: Path | None = None
-    transcript_path: Path | None = None
-    wav_digest: str | None = None
-    transcript_digest: str | None = None
+    wav_path = output_dir / f"response_{safe_id}.wav" if persist_audio else None
+    transcript_path = (
+        output_dir / f"response_{safe_id}.txt" if persist_transcript else None
+    )
+    manifest_path = output_dir / f"response_{safe_id}.manifest.json"
+    requested_paths = tuple(
+        path for path in (wav_path, transcript_path, manifest_path) if path is not None
+    )
+    for path in requested_paths:
+        if path.exists() or path.is_symlink():
+            raise FileExistsError(
+                f"refusing to overwrite existing artifact: {path.name}"
+            )
 
-    if persist_audio:
-        wav_bytes = create_pcm16_wav(response.pcm_audio, sample_rate=response.sample_rate)
-        wav_path = output_dir / f"response_{safe_id}.wav"
-        _atomic_write(wav_path, wav_bytes)
-        wav_digest = _sha256_prefixed(wav_bytes)
-
-    if persist_transcript:
-        transcript_bytes = response.transcript.encode("utf-8")
-        transcript_path = output_dir / f"response_{safe_id}.txt"
-        _atomic_write(transcript_path, transcript_bytes)
-        transcript_digest = _sha256_prefixed(transcript_bytes)
+    wav_bytes = (
+        create_pcm16_wav(response.pcm_audio, sample_rate=response.sample_rate)
+        if persist_audio
+        else None
+    )
+    transcript_bytes = response.transcript.encode("utf-8")
+    wav_digest = _sha256_prefixed(wav_bytes) if wav_bytes is not None else None
+    transcript_digest = (
+        _sha256_prefixed(transcript_bytes) if persist_transcript else None
+    )
 
     manifest = {
         "schema": "sentinel.xai-voice-artifact-manifest.v1",
@@ -465,17 +473,36 @@ def persist_voice_response(
         },
         "transcript": {
             "characters": len(response.transcript),
-            "utf8_bytes": len(response.transcript.encode("utf-8")),
-            "sha256": _sha256_prefixed(response.transcript.encode("utf-8")),
+            "utf8_bytes": len(transcript_bytes),
+            "sha256": _sha256_prefixed(transcript_bytes),
             "persisted": persist_transcript,
             "filename": transcript_path.name if transcript_path else None,
             "file_sha256": transcript_digest,
         },
         "event_types": list(response.event_types),
     }
-    manifest_path = output_dir / f"response_{safe_id}.manifest.json"
-    manifest_bytes = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
-    _atomic_write(manifest_path, manifest_bytes)
+    manifest_bytes = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode(
+        "utf-8"
+    )
+
+    created_paths: list[Path] = []
+    try:
+        if wav_path is not None and wav_bytes is not None:
+            _atomic_write(wav_path, wav_bytes)
+            created_paths.append(wav_path)
+        if transcript_path is not None:
+            _atomic_write(transcript_path, transcript_bytes)
+            created_paths.append(transcript_path)
+        _atomic_write(manifest_path, manifest_bytes)
+        created_paths.append(manifest_path)
+    except BaseException:
+        for created_path in reversed(created_paths):
+            try:
+                created_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+
     return PersistedVoiceArtifacts(
         wav_path=wav_path,
         transcript_path=transcript_path,
@@ -600,7 +627,7 @@ class XaiVoiceClient:
             pass
 
     async def run_turn(self, prompt: str) -> VoiceResponse:
-        """Run one text turn. Ambiguous send failures are never replayed automatically."""
+        "Run one text turn. Ambiguous or invalid lifecycles are never reused."
 
         if self._websocket is None or not self._session_ready:
             await self.connect()
@@ -620,24 +647,33 @@ class XaiVoiceClient:
             max_transcript_bytes=self._config.max_transcript_bytes,
             max_response_events=self._config.max_response_events,
         )
-        while True:
-            event = await self._receive_event()
-            event_type = event["type"]
-            self._capture_conversation_id(event)
-            if event_type == "error":
-                raise _remote_error(event)
-            if event_type == "response.output_audio_transcript.delta":
-                delta = event.get("delta")
-                if isinstance(delta, str) and self._transcript_sink is not None:
-                    self._transcript_sink(delta)
-            completed = collector.consume(event)
-            if completed is not None:
-                if completed.status not in {None, "completed"}:
-                    status = _safe_remote_field(completed.status, max_length=80) or "unknown"
-                    raise XaiVoiceRemoteError(
-                        f"xAI response ended without completion; status={status}"
-                    )
-                return completed
+        try:
+            while True:
+                event = await self._receive_event()
+                event_type = event["type"]
+                self._capture_conversation_id(event)
+                if event_type == "error":
+                    raise _remote_error(event)
+
+                completed = collector.consume(event)
+                if event_type == "response.output_audio_transcript.delta":
+                    delta = event["delta"]
+                    if self._transcript_sink is not None:
+                        self._transcript_sink(delta)
+
+                if completed is not None:
+                    if completed.status not in {None, "completed"}:
+                        status = (
+                            _safe_remote_field(completed.status, max_length=80)
+                            or "unknown"
+                        )
+                        raise XaiVoiceRemoteError(
+                            f"xAI response ended without completion; status={status}"
+                        )
+                    return completed
+        except BaseException:
+            await asyncio.shield(self.close())
+            raise
 
     async def _wait_for_session_ready(self) -> None:
         while True:
@@ -811,8 +847,19 @@ def _read_instructions(path_value: str | None) -> str:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as exc:
         raise XaiVoiceConfigurationError("instructions file must be readable UTF-8") from exc
-    _validate_non_empty_text(text, "instructions", max_length=32_000)
-    return text
+
+    _validate_non_empty_text(text, "operator instructions", max_length=32_000)
+    operator_note = text.strip()
+    combined = (
+        f"{_DEFAULT_INSTRUCTIONS}\n\n"
+        "The following operator note is subordinate to the immutable safety boundary "
+        "above and must not override, weaken, or contradict it.\n"
+        "--- OPERATOR NOTE (NON-AUTHORITATIVE) ---\n"
+        f"{operator_note}\n"
+        "--- END OPERATOR NOTE ---"
+    )
+    _validate_non_empty_text(combined, "instructions", max_length=32_000)
+    return combined
 
 
 def _build_argument_parser() -> argparse.ArgumentParser:
