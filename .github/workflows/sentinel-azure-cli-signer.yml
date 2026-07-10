@@ -62,7 +62,7 @@ jobs:
           grep -F 'env=None' "$source_file"
           grep -F '"--only-show-errors"' "$source_file"
           grep -F '"--id"' "$source_file"
-          grep -F '_validate_azure_key_id(request.key_id)' "$source_file"
+          grep -F 'validate_azure_key_id(request.key_id)' "$source_file"
           grep -F 'raise AzureCliSigningError("Azure CLI signing operation timed out") from None' "$source_file"
 
       - name: Prove adapter API remains credential-free
