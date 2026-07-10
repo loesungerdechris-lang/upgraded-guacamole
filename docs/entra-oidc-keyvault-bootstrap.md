@@ -86,7 +86,7 @@ Review every value in the JSON plan, especially:
 - GitHub repository
 - GitHub environment
 - federated subject
-- custom role definition ID
+- custom role name
 - exact signer data actions
 
 ## 2. Apply the bootstrap
@@ -112,6 +112,8 @@ The script creates or safely reuses:
 6. RBAC-enabled, purge-protected Key Vault
 7. non-exportable EC P-256 key `sentinel-receipt-es256`
 8. one vault-scoped custom signer-role assignment for the workload identity
+
+Azure assigns the custom role-definition GUID. The script retrieves that GUID from the Azure CLI response and uses the returned value for role assignment and verification.
 
 The custom role contains no management-plane actions and exactly these data actions:
 
