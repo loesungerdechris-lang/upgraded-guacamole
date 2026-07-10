@@ -43,28 +43,15 @@ jobs:
           branch_head="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/feat/xai-voice-boundary" --jq '.object.sha')"
           test "$branch_head" = "$EXPECTED_HEAD"
 
-      - name: Correct the exact stale socket assertion
+      - name: Correct the stale socket assertion
         shell: python
         run: |
+          import re
           from pathlib import Path
 
           path = Path('tests/test_xai_voice.py')
           text = path.read_text(encoding='utf-8')
-          old = '''def test_client_rejects_non_completed_response_status() -> None:
-              client = XaiVoiceClient(api_key="test-key", config=VoiceSessionConfig())
-              client._websocket = _FakeWebSocket(
-                  [
-                      {"type": "response.created", "response": {"id": "resp_failed"}},
-                      {"type": "response.done", "response": {"status": "failed"}},
-                  ]
-              )
-              client._session_ready = True
-
-              with pytest.raises(XaiVoiceRemoteError, match="status=failed"):
-                  asyncio.run(client.run_turn("hello"))
-              assert len(client._websocket.sent) == 2
-          '''
-          new = '''def test_client_rejects_non_completed_response_status() -> None:
+          replacement = '''def test_client_rejects_non_completed_response_status() -> None:
               client = XaiVoiceClient(api_key="test-key", config=VoiceSessionConfig())
               websocket = _FakeWebSocket(
                   [
@@ -81,11 +68,25 @@ jobs:
               assert websocket.closed is True
               assert client._websocket is None
           '''
-          old = '\n'.join(line[10:] if line.startswith('          ') else line for line in old.splitlines()) + '\n'
-          new = '\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines()) + '\n'
-          if text.count(old) != 1:
-              raise SystemExit('stale socket assertion block did not match exactly')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          replacement = '\n'.join(
+              line[10:] if line.startswith('          ') else line
+              for line in replacement.splitlines()
+          )
+          replacement += '\n\n\ndef test_response_collector_builds_completed_response'
+          pattern = (
+              r'def test_client_rejects_non_completed_response_status\(\) -> None:\n'
+              r'.*?\n\ndef test_response_collector_builds_completed_response'
+          )
+          updated, count = re.subn(
+              pattern,
+              lambda _match: replacement,
+              text,
+              count=1,
+              flags=re.DOTALL,
+          )
+          if count != 1:
+              raise SystemExit(f'expected one stale socket test block, found {count}')
+          path.write_text(updated, encoding='utf-8')
 
       - name: Install test dependencies
         run: |
