@@ -1,0 +1,156 @@
+name: SENTINEL Azure OIDC Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: sentinel-azure-oidc-production
+  cancel-in-progress: false
+
+jobs:
+  oidc-smoke:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: sentinel-production
+    timeout-minutes: 10
+    env:
+      AZURE_CORE_OUTPUT: none
+      AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      SENTINEL_KEY_VAULT_NAME: ${{ vars.SENTINEL_KEY_VAULT_NAME }}
+      SENTINEL_KEY_NAME: ${{ vars.SENTINEL_KEY_NAME }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Validate protected environment configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          required=(
+            AZURE_CLIENT_ID
+            AZURE_TENANT_ID
+            AZURE_SUBSCRIPTION_ID
+            SENTINEL_KEY_VAULT_NAME
+            SENTINEL_KEY_NAME
+          )
+
+          for name in "${required[@]}"; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::$name is not configured in the sentinel-production environment."
+              exit 1
+            fi
+          done
+
+          guid_re='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            if ! [[ "${!name}" =~ $guid_re ]]; then
+              echo "::error::$name is not a valid GUID."
+              exit 1
+            fi
+          done
+
+          if ! [[ "$SENTINEL_KEY_VAULT_NAME" =~ ^[a-z0-9-]{3,24}$ ]]; then
+            echo "::error::SENTINEL_KEY_VAULT_NAME must be 3-24 lowercase alphanumeric or hyphen characters."
+            exit 1
+          fi
+
+          if ! [[ "$SENTINEL_KEY_NAME" =~ ^[A-Za-z0-9-]{1,127}$ ]]; then
+            echo "::error::SENTINEL_KEY_NAME contains unsupported characters."
+            exit 1
+          fi
+
+      - name: Authenticate to Azure with GitHub OIDC
+        uses: azure/login@a457da9ea143d694b1b9c7c869ebb04ebe844ef5 # v2
+        with:
+          client-id: ${{ env.AZURE_CLIENT_ID }}
+          tenant-id: ${{ env.AZURE_TENANT_ID }}
+          subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Verify federated identity binding
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          actual_tenant="$(az account show --only-show-errors --query tenantId --output tsv)"
+          actual_subscription="$(az account show --only-show-errors --query id --output tsv)"
+
+          if [ "$actual_tenant" != "$AZURE_TENANT_ID" ]; then
+            echo "::error::OIDC login resolved the wrong tenant."
+            exit 1
+          fi
+
+          if [ "$actual_subscription" != "$AZURE_SUBSCRIPTION_ID" ]; then
+            echo "::error::OIDC login resolved the wrong subscription."
+            exit 1
+          fi
+
+          echo "Federated tenant and subscription binding verified."
+
+      - name: Verify Key Vault signing key metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          az keyvault key show \
+            --only-show-errors \
+            --vault-name "$SENTINEL_KEY_VAULT_NAME" \
+            --name "$SENTINEL_KEY_NAME" \
+            --query 'key.{kid:kid,kty:kty,crv:crv,key_ops:keyOps}' \
+            --output json > key-metadata.json
+
+          jq -e '
+            .kty == "EC" and
+            .crv == "P-256" and
+            (.key_ops | index("sign")) != null and
+            (.key_ops | index("verify")) != null
+          ' key-metadata.json > /dev/null
+
+          key_id="$(jq -r '.kid' key-metadata.json)"
+          if [ -z "$key_id" ] || [ "$key_id" = "null" ]; then
+            echo "::error::Key Vault did not return a versioned key identifier."
+            exit 1
+          fi
+
+          if ! [[ "$key_id" == https://*.vault.azure.net/keys/"$SENTINEL_KEY_NAME"/* ]]; then
+            echo "::error::Key Vault returned an unexpected versioned key identifier."
+            exit 1
+          fi
+
+          echo "Key Vault P-256 signing key metadata verified."
+
+      - name: Write smoke-test summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '## SENTINEL Azure OIDC smoke test'
+            echo
+            echo '- GitHub OIDC authentication: passed'
+            echo '- Entra tenant binding: passed'
+            echo '- Azure subscription binding: passed'
+            echo '- Key Vault key type: EC P-256'
+            echo '- Key operations: sign + verify'
+            echo '- Third-party actions: immutable SHA pinned'
+            echo
+            echo 'No client secret or private signing material was used.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove transient key metadata
+        if: always()
+        shell: bash
+        run: rm -f key-metadata.json
+
+      - name: Azure logout
+        if: always()
+        shell: bash
+        run: az logout --only-show-errors || true
