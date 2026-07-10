@@ -259,7 +259,10 @@ def finalize_receipt_signature(
         raise SigningContractError("external signature key_id does not match the prepared request")
 
     current_payload = build_unsigned_receipt_payload(receipt)
-    if not hmac.compare_digest(current_payload, prepared.canonical_payload):
+    if not hmac.compare_digest(
+        current_payload.encode("utf-8"),
+        prepared.canonical_payload.encode("utf-8"),
+    ):
         raise SigningContractError("receipt changed after signing preparation")
 
     current_receipt_hash = sha256_prefixed(current_payload)
