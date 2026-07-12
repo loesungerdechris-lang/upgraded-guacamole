@@ -37,6 +37,8 @@ tests/         Verifier, fixtures, and red-team style tests
 - ES256/JWS-style release receipt verification through public trust registry
 - release receipt policy checks for required roles and minimum signatures
 - receipt tamper tests for subject, evidence, signature, key status, role binding and chain data
+- fixed-host Wayback snapshot discovery and read-only capture retrieval
+- SHA-256 evidence manifests and local-only archived-page reconstruction
 - CI checks for JSON validity, forbidden secret-like files, linting, and tests
 
 ## Ground rules
@@ -55,6 +57,25 @@ python -m pip install --upgrade pip
 python -m pip install -e .[dev]
 ruff check src tests
 pytest -q
+```
+
+## Wayback evidence layer
+
+The Wayback integration is read-only and fail-closed. It uses only the official Internet Archive Availability, CDX, and replay hosts. It can discover historical captures, retrieve selected archived bytes without executing them, build deterministic SHA-256 evidence manifests, and materialize a local offline reconstruction bundle.
+
+Automatic Save Page Now submissions, third-party rebuild services, archived JavaScript execution, and publication of restored content remain disabled. Publication requires a separate rights and SENTINEL release review.
+
+```text
+src/sentinel_core/wayback.py
+config/wayback-source-policy.json
+docs/wayback-evidence-layer.md
+tests/test_wayback.py
+```
+
+Run the dedicated test gate:
+
+```bash
+pytest -q tests/test_wayback.py
 ```
 
 ## Receipt verifier gate
