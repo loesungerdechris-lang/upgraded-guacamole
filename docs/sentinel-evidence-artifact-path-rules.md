@@ -70,7 +70,17 @@ invalid or non-canonical descriptor path -> reject -> SEA_NOT_VERIFIED
 The descriptor string is part of `member_hash` and therefore part of `H_core`.
 Changing it after validation would change the evidence commitment.
 
-## 4. Descriptor-level uniqueness
+## 4. Schema parity
+
+The JSON Schema `safePath` definition and the semantic verifier must reject the
+same lexical path classes. A schema-only consumer must not accept empty segments,
+dot segments, dot-dot segments, trailing separators, backslashes, or control
+characters that the semantic verifier rejects.
+
+Schema validity alone does not establish Level 3 `BYTES`. Filesystem identity,
+root confinement, symlink, file type, size, and SHA-256 checks remain mandatory.
+
+## 5. Descriptor-level uniqueness
 
 Before local byte access, every non-null member path must be canonical. During
 Level 3 verification, every member must have a path and no two members may contain
@@ -79,7 +89,7 @@ the same canonical descriptor path.
 String aliases such as `raw/a`, `raw/./a`, and `raw//a` are not three paths. The
 last two are invalid and must not reach filesystem resolution.
 
-## 5. Filesystem-level uniqueness
+## 6. Filesystem-level uniqueness
 
 Descriptor uniqueness alone is insufficient. After safe resolution beneath the
 bundle root, the verifier must also ensure that no two members refer to the same
@@ -95,7 +105,12 @@ The identity gate must detect at least:
 A second member that resolves to an already-bound path or object fails closed.
 The verifier does not choose one member as authoritative and does not merge them.
 
-## 6. Symbolic links
+A stable object identity must come from opened-handle metadata or an equivalent
+platform file-identity API. If a stable identity is unavailable, the verifier must
+not substitute the resolved path as object identity and must not return `BYTES`.
+It fails closed with `SEA_NOT_VERIFIED`.
+
+## 7. Symbolic links
 
 The bundle root must not be a symbolic link. No member path component may be a
 symbolic link, including intermediate directories and the final component.
@@ -103,14 +118,14 @@ symbolic link, including intermediate directories and the final component.
 A path that remains lexically inside the root but traverses a symbolic link is
 invalid even when the symlink target also happens to be inside the root.
 
-## 7. Hard links
+## 8. Hard links
 
 Hard links are not forbidden merely because they exist elsewhere in the bundle.
 They become invalid when two Evidence Artifact members bind the same filesystem
 object under different paths. This prevents duplicate evidence counting and
 ambiguous selective disclosure.
 
-## 8. Root confinement
+## 9. Root confinement
 
 Every resolved member must:
 
@@ -118,12 +133,13 @@ Every resolved member must:
 - remain beneath the resolved bundle root;
 - be a regular file;
 - be readable through the verifier's bounded local operation;
+- expose stable filesystem object identity for `BYTES`;
 - match the descriptor byte length;
 - match the descriptor SHA-256 value.
 
 Any failure returns `SEA_NOT_VERIFIED`. A partial bundle never receives `BYTES`.
 
-## 9. Unicode and case
+## 10. Unicode and case
 
 The verifier performs no Unicode NFC, NFD, NFKC, or NFKD transformation. The
 original allowed string is committed exactly as supplied. Filesystem identity is
@@ -132,7 +148,7 @@ two members to bind one object unnoticed.
 
 A future normalization policy would be a new profile and cannot redefine v1.
 
-## 10. Race boundary
+## 11. Race boundary
 
 Path validation, symlink checks, resolution, file identity, size, and hashing are
 performed in one local verifier operation. The file is hashed from the opened
@@ -143,7 +159,7 @@ against a hostile privileged kernel or storage administrator. High-assurance
 operation requires an immutable or read-only evidence store and an independently
 reviewed execution environment.
 
-## 11. Required negative tests
+## 12. Required negative tests
 
 The v1 suite must cover at least:
 
@@ -154,17 +170,19 @@ The v1 suite must cover at least:
 5. `..` segment;
 6. backslash;
 7. NUL or control character;
-8. duplicate canonical descriptor path;
-9. final symbolic link;
-10. intermediate symbolic link;
-11. hard-link alias;
-12. missing member path during `BYTES`;
-13. root escape;
-14. missing file;
-15. byte-length mismatch;
-16. SHA-256 mismatch.
+8. schema and semantic rejection parity;
+9. duplicate canonical descriptor path;
+10. final symbolic link;
+11. intermediate symbolic link;
+12. hard-link alias;
+13. unavailable stable filesystem identity;
+14. missing member path during `BYTES`;
+15. root escape;
+16. missing file;
+17. byte-length mismatch;
+18. SHA-256 mismatch.
 
-## 12. Non-goals
+## 13. Non-goals
 
 This document does not authorize filesystem writes, archive acquisition,
 networking, credentials, signing, trusted-time anchoring, release, production,
