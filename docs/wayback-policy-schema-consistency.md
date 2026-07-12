@@ -10,6 +10,8 @@ The normative policy, JSON Schema, manifest builder, semantic validator, and tes
 
 The review identified one important boundary that required explicit clarification: the schema can describe a future `PUBLISHED` record, but Phase 1 must not accept that state until a separate receipt-bound verifier exists. The validator now rejects `PUBLISHED` unconditionally and accepts `VERIFIED` only through explicit release-aware internal validation.
 
+The dedicated Wayback test selection contains 29 test cases after parameter expansion and passes in GitHub Actions.
+
 ## Mapping
 
 | Policy requirement | Schema or code enforcement | Result |
