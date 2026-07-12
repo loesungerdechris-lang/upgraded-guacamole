@@ -7,9 +7,14 @@
 
 ## 1. Purpose
 
-This document is the single navigation and control reference for the SENTINEL Wayback Evidence Layer, Phase 2 domain reconstruction, Phase 3 multi-source historical evidence, and the manual receipt-bound publication gate.
+This document is the single navigation and control reference for the SENTINEL
+Wayback Evidence Layer, Phase 2 domain reconstruction, Phase 3 multi-source
+historical evidence, bounded pilot activation, and the manual receipt-bound
+publication gate.
 
-It consolidates the architecture without replacing the normative schema, policy, verifier code, source policies, threat models, or signed release decisions.
+It consolidates the architecture without replacing the normative schema,
+policy, verifier code, source policies, threat models, pilot authorizations, or
+signed release decisions.
 
 ## 2. Document hierarchy and precedence
 
@@ -19,17 +24,21 @@ Where documents differ, the following order applies:
 2. versioned JSON Schema and verifier code on the reviewed commit;
 3. `docs/wayback-evidence-policy.md`;
 4. `docs/wayback-release-receipt-gate.md`;
-5. source-specific acquisition policies;
+5. source-specific acquisition policies and adapter boundaries;
 6. `docs/phase3-multi-source-threat-model.md`;
 7. `docs/phase3-multi-source-historical-evidence-spec.md`;
-8. implementation checklists and consistency reviews;
-9. executive summaries and this navigation reference.
+8. `docs/phase3-operational-orchestration-spec.md`;
+9. `docs/phase3-pilot-activation-framework.md`;
+10. implementation checklists and consistency reviews;
+11. executive summaries and this navigation reference.
 
-A summary cannot relax a gate defined by a higher-precedence source. Ambiguity fails closed.
+A summary or pilot document cannot relax a gate defined by a
+higher-precedence source. Ambiguity fails closed.
 
 ## 3. Core position
 
-The Internet Archive Wayback Machine is a global, reusable SENTINEL Evidence Layer for public historical web data.
+The Internet Archive Wayback Machine is a global, reusable SENTINEL Evidence
+Layer for public historical web data.
 
 The immutable operating principles are:
 
@@ -79,19 +88,39 @@ Excluded:
 
 Tracked in Issue #28.
 
-Planned capabilities include approved target registries, bounded domain discovery, change reports, asset graphs, missing-resource reports, multi-timestamp comparison, optional receipt linkage, and georeferenced overlays where evidentially appropriate.
+Planned capabilities include approved target registries, bounded domain
+discovery, change reports, asset graphs, missing-resource reports,
+multi-timestamp comparison, optional receipt linkage, and georeferenced
+overlays where evidentially appropriate.
 
-Recurring operation requires an explicit GO/HOLD decision after a bounded reviewed pilot.
+Recurring operation requires an explicit GO/HOLD decision after a bounded
+reviewed pilot.
 
 ### Phase 3 — Multi-Source Historical Evidence Engine
 
-Tracked in Issue #29 and specified in `docs/phase3-multi-source-historical-evidence-spec.md` with security controls in `docs/phase3-multi-source-threat-model.md`.
+Tracked in Issue #29 and specified in
+`docs/phase3-multi-source-historical-evidence-spec.md`, with security controls
+in `docs/phase3-multi-source-threat-model.md`, operational contracts in
+`docs/phase3-operational-orchestration-spec.md`, and pilot prerequisites in
+`docs/phase3-pilot-activation-framework.md`.
 
-The Wayback Machine remains the primary source. archive.today-family services, Perma.cc, Memento discovery, ArchiveBox, and SingleFile are separate Evidence Sources. Each needs its own policy, host boundary, timestamp semantics, provenance, hash, tests, and acquisition authority.
+The Wayback Machine remains the primary source. archive.today-family services,
+Perma.cc, Memento discovery, ArchiveBox, and SingleFile are separate Evidence
+Sources. Each needs its own policy, host boundary, timestamp semantics,
+provenance, hash, tests, and acquisition authority.
 
-No secondary source inherits Internet Archive trust. Cross-verification records agreement, disagreement, and gaps; it does not merge incompatible captures or establish factual truth by source count.
+No secondary source inherits Internet Archive trust. Cross-verification records
+agreement, disagreement, and gaps; it does not merge incompatible captures or
+establish factual truth by source count.
 
-A bounded offline Phase 3 pilot may be designed under HOLD before publication exists. Issue #30 remains the separate publication dependency and grants no adapter or acquisition authority.
+A bounded Phase 3 pilot may be designed under HOLD before publication exists.
+Issue #30 remains the separate publication dependency and grants no adapter,
+acquisition, pilot, or network authority.
+
+A real-source pilot additionally requires the separate activation framework,
+an exact pilot authorization record, approved registries and transports, an
+isolated environment, privacy and threat review, and a manual GO/HOLD decision.
+Creating those components does not activate them.
 
 ## 5. Manifest and provenance model
 
@@ -102,7 +131,8 @@ Each Phase 1 manifest binds:
 - normalized target URL;
 - selected capture metadata;
 - observation time;
-- artifact original URL, archive URL, capture timestamp, retrieval time, content type, byte length, SHA-256, and safe relative path;
+- artifact original URL, archive URL, capture timestamp, retrieval time,
+  content type, byte length, SHA-256, and safe relative path;
 - mandatory interpretation limits;
 - release-gate state;
 - optional separately governed cross-verification source records;
@@ -114,14 +144,18 @@ The required interpretation limits include:
 - missing captures do not prove that content never existed;
 - archived replay may omit dynamic or externally hosted resources.
 
+Memento and other secondary sources retain their own source-specific evidence
+records and normalized envelopes. They are not forced into Wayback provenance
+fields.
+
 ## 6. State model
 
 ### HOLD
 
-Normal state for acquisition and reconstruction.
+Normal state for acquisition, reconstruction, orchestration, and pilot work.
 
-- offline preview only;
-- rights, privacy, and provenance reviews required;
+- offline or separately authorized bounded operation only;
+- rights, privacy, provenance, security, and source-policy reviews apply;
 - SENTINEL release remains HOLD;
 - publication is false.
 
@@ -132,13 +166,16 @@ Internal reviewed state only.
 - technical, provenance, rights, and privacy checks approved;
 - publication remains false;
 - SENTINEL release remains HOLD;
-- accepted only through explicit release-aware internal validation.
+- accepted only through explicit release-aware internal validation;
+- never produced automatically by a Phase 3 pilot.
 
 ### PUBLISHED
 
 A signed release state, not a manually edited JSON label.
 
-Draft PR #27 rejects `PUBLISHED`. The state remains unavailable until Issue #30 implements and independently verifies the receipt-bound publication transition.
+Draft PR #27 rejects `PUBLISHED`. The state remains unavailable until Issue #30
+implements and independently verifies the receipt-bound publication
+transition.
 
 ## 7. Non-circular manual release chain
 
@@ -150,7 +187,8 @@ VERIFIED manifest H_verified
     -> final envelope receives H_published
 ```
 
-The receipt must bind the VERIFIED predecessor, not a final envelope containing the same receipt hash.
+The receipt must bind the VERIFIED predecessor, not a final envelope containing
+the same receipt hash.
 
 Minimum roles:
 
@@ -160,7 +198,9 @@ Minimum roles:
 
 Minimum valid signatures: three, with externally managed role-bound keys.
 
-The future publication verifier remains verifier-only. It performs no archive access, key generation, receipt signing, content publication, or rights determination.
+The future publication verifier remains verifier-only. It performs no archive
+access, key generation, receipt signing, content publication, or rights
+determination.
 
 ## 8. Security controls
 
@@ -170,7 +210,7 @@ The current and planned architecture addresses:
 - numeric loopback aliases;
 - DNS rebinding and unsafe redirects;
 - replay/capture mismatch;
-- malformed CDX or availability responses;
+- malformed CDX, TimeMap, or availability responses;
 - response-size abuse and decompression bombs;
 - path traversal, symlink escapes, and race conditions;
 - artifact and manifest tampering;
@@ -182,27 +222,47 @@ The current and planned architecture addresses:
 - privacy, victim-safety, and investigative-interest disclosure;
 - signing-key leakage and role spoofing;
 - supply-chain compromise;
-- automatic status elevation and release-destination substitution.
+- automatic status elevation and release-destination substitution;
+- accidental pilot activation or environment privilege widening;
+- loss of audit evidence through automatic abort deletion.
 
-Any unsupported or ambiguous condition returns HOLD or an explicit failure. It is never converted into a successful absence or approval finding.
+Any unsupported or ambiguous condition returns HOLD or an explicit failure. It
+is never converted into a successful absence or approval finding.
 
 ## 9. Sensitive historical cases
 
-The architecture may be used for Ilmenau, Ilm-Kreis, Thüringen authorities, Teich Am Ilmufer, the former Fischerhütte paint-factory site, the Ilm-Rennsteig cycle route, engineering firms, public procurement, historical maps, mineral-oil and tank installations, missing project records, and comparable global cases.
+The architecture may be used for Ilmenau, Ilm-Kreis, Thüringen authorities,
+Teich Am Ilmufer, the former Fischerhütte paint-factory site, the
+Ilm-Rennsteig cycle route, engineering firms, public procurement, historical
+maps, mineral-oil and tank installations, missing project records, and
+comparable global cases.
 
-It may also preserve lawful public historical web records connected to sensitive events and abuse-related investigations. Such work remains victim-first, minimizes personal data, distinguishes archived statements from verified facts, avoids inference-based identification and guilt by association, and keeps all reconstructed content on HOLD until dedicated review is complete.
+It may also preserve lawful public historical web records connected to
+sensitive events and abuse-related investigations. Such work remains
+victim-first, minimizes personal data, distinguishes archived statements from
+verified facts, avoids inference-based identification and guilt by
+association, and keeps all reconstructed content on HOLD until dedicated
+review is complete.
+
+Sensitive raw evidence is not a GitHub Actions artifact by default. It belongs
+only in an approved encrypted restricted evidence store with a documented
+retention and disposition decision.
 
 ## 10. Current repository status
 
-- Draft PR #27: open, mergeable, DRAFT / HOLD;
+- Draft PR #27: Phase 1, DRAFT / HOLD;
+- Draft PR #31: Memento discovery adapter, DRAFT / HOLD;
+- Draft PR #32: operational Phase 3 specification, DRAFT / HOLD;
 - Issue #28: Phase 2 planning;
-- Issue #29: Phase 3 planning and threat model;
+- Issue #29: Phase 3 planning, threat model, and staged implementation;
 - Issue #30: receipt-bound publication verifier planning;
+- pilot activation framework: DRAFT / HOLD;
 - publication verifier: not implemented;
 - publication authority: not granted;
 - recurring acquisition: not authorized;
 - external archive connectors: not authorized;
-- merge and production activation: require explicit separate GO.
+- live pilot: not authorized;
+- merge and production activation: require explicit separate GO decisions.
 
 ## 11. Normative file map
 
@@ -210,29 +270,50 @@ It may also preserve lawful public historical web records connected to sensitive
 schemas/sentinel.wayback.evidence.v1.json
 src/sentinel_core/wayback.py
 src/sentinel_core/wayback_manifest.py
+src/sentinel_core/memento.py
+src/sentinel_core/memento_model.py
+src/sentinel_core/memento_parser.py
+src/sentinel_core/memento_validation.py
 config/wayback-source-policy.json
+config/memento-source-policy.json
 docs/wayback-evidence-policy.md
 docs/wayback-policy-schema-consistency.md
 docs/phase3-multi-source-historical-evidence-spec.md
 docs/phase3-multi-source-threat-model.md
+docs/phase3-operational-orchestration-spec.md
+docs/phase3-pilot-activation-framework.md
+docs/memento-adapter-boundary.md
 docs/wayback-release-receipt-gate.md
 docs/wayback-release-gate-executive-summary.md
 docs/wayback-release-verifier-implementation-checklist.md
 tests/test_wayback.py
 tests/test_wayback_manifest.py
+tests/test_memento.py
+tests/test_memento_retry.py
+tests/test_phase3_operational_spec.py
+tests/test_phase3_pilot_activation_framework.py
 .github/workflows/sentinel-wayback-evidence.yml
+.github/workflows/sentinel-memento-adapter.yml
+.github/workflows/sentinel-phase3-operational-spec.yml
+.github/workflows/sentinel-phase3-pilot-activation.yml
 ```
 
 ## 12. Change-control rule
 
-Any change that widens trusted hosts, enables credentials, adds recurring acquisition, performs archive writes, executes active content, adds extraction parsers, allows live fallback, weakens HOLD, changes release roles or thresholds, adds signing capability, or enables publication requires:
+Any change that widens trusted hosts, enables credentials, adds recurring
+acquisition, performs archive writes, executes active content, adds extraction
+parsers, allows live fallback, weakens HOLD, changes pilot roles or limits,
+changes release roles or thresholds, adds signing capability, or enables
+publication requires:
 
 - a separate scoped change;
-- updated threat and policy analysis;
+- updated threat and privacy analysis;
 - dedicated negative tests;
 - independent review;
 - green required CI;
 - explicit SENTINEL GO for merge;
-- a separate explicit GO for operational activation or publication.
+- a separate explicit GO for pilot activation, production activation, or
+  publication as applicable.
 
-Until every applicable condition is met, the relevant capability remains disabled and fails closed.
+Until every applicable condition is met, the relevant capability remains
+disabled and fails closed.
