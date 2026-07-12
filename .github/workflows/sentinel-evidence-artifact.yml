@@ -11,6 +11,7 @@ on:
       - "schemas/sentinel.evidence.artifact.v1.json"
       - "src/sentinel_core/evidence_artifact.py"
       - "tests/test_evidence_artifact.py"
+      - "tests/test_evidence_artifact_review_regressions.py"
       - ".github/workflows/sentinel-evidence-artifact.yml"
   push:
     branches: ["main"]
@@ -20,6 +21,7 @@ on:
       - "schemas/sentinel.evidence.artifact.v1.json"
       - "src/sentinel_core/evidence_artifact.py"
       - "tests/test_evidence_artifact.py"
+      - "tests/test_evidence_artifact_review_regressions.py"
       - ".github/workflows/sentinel-evidence-artifact.yml"
 
 permissions:
@@ -70,6 +72,9 @@ jobs:
           grep -F '"publication": False' "$module"
           grep -F 'Non-canonical evidence bundle path' "$module"
           grep -F 'already-bound filesystem object' "$module"
+          grep -F 'Stable filesystem object identity is unavailable; BYTES is blocked' "$module"
+          grep -F '(?!.*//)' "$schema"
+          grep -F '(?!.*[\\u0000-\\u001F\\u007F])' "$schema"
 
           forbidden='(^|[[:space:]])(requests|httpx|aiohttp|socket|subprocess)[[:space:].]'
           forbidden+='|private_key|generate_private_key|sign\('
@@ -84,13 +89,25 @@ jobs:
         run: python -m json.tool schemas/sentinel.evidence.artifact.v1.json >/dev/null
 
       - name: Compile
-        run: python -m compileall -q src/sentinel_core/evidence_artifact.py tests/test_evidence_artifact.py
+        run: |
+          python -m compileall -q \
+            src/sentinel_core/evidence_artifact.py \
+            tests/test_evidence_artifact.py \
+            tests/test_evidence_artifact_review_regressions.py
 
       - name: Lint
-        run: ruff check src/sentinel_core/evidence_artifact.py tests/test_evidence_artifact.py
+        run: |
+          ruff check \
+            src/sentinel_core/evidence_artifact.py \
+            tests/test_evidence_artifact.py \
+            tests/test_evidence_artifact_review_regressions.py
 
       - name: Test evidence artifact
-        run: pytest -q tests/test_evidence_artifact.py --junitxml=evidence-artifact-junit.xml
+        run: |
+          pytest -q \
+            tests/test_evidence_artifact.py \
+            tests/test_evidence_artifact_review_regressions.py \
+            --junitxml=evidence-artifact-junit.xml
 
       - name: Upload non-sensitive test report
         if: always()
