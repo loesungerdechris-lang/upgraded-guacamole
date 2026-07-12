@@ -112,6 +112,144 @@ def _reject_duplicate_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return result
 
 
+def _secure_open_capability() -> tuple[int, int, int]:
+    """Return required secure-open flags or fail closed on this platform."""
+
+    nofollow = int(getattr(os, "O_NOFOLLOW", 0))
+    directory = int(getattr(os, "O_DIRECTORY", 0))
+    nonblock = int(getattr(os, "O_NONBLOCK", 0))
+    if not nofollow or not directory or os.open not in os.supports_dir_fd:
+        _fail("Secure no-follow file opening is unavailable on this platform")
+    return nofollow, directory, nonblock
+
+
+def _directory_open_flags() -> int:
+    nofollow, directory, _ = _secure_open_capability()
+    return (
+        os.O_RDONLY
+        | nofollow
+        | directory
+        | int(getattr(os, "O_CLOEXEC", 0))
+        | int(getattr(os, "O_BINARY", 0))
+    )
+
+
+def _regular_open_flags(*, nonblocking: bool) -> int:
+    nofollow, _, nonblock = _secure_open_capability()
+    flags = (
+        os.O_RDONLY
+        | nofollow
+        | int(getattr(os, "O_CLOEXEC", 0))
+        | int(getattr(os, "O_BINARY", 0))
+    )
+    if nonblocking:
+        if not nonblock:
+            _fail("Secure nonblocking file opening is unavailable on this platform")
+        flags |= nonblock
+    return flags
+
+
+def _open_directory_nofollow(path: str | Path) -> int:
+    """Open an absolute directory path component-by-component without symlinks."""
+
+    absolute = Path(os.path.abspath(os.fspath(path)))
+    if absolute.anchor != os.sep:
+        _fail("Secure no-follow directory traversal requires a POSIX path anchor")
+
+    flags = _directory_open_flags()
+    current_fd: int | None = None
+    try:
+        current_fd = os.open(os.sep, flags)
+        for part in absolute.parts[1:]:
+            next_fd = os.open(part, flags, dir_fd=current_fd)
+            os.close(current_fd)
+            current_fd = next_fd
+        return current_fd
+    except EvidenceArtifactValidationError:
+        if current_fd is not None:
+            os.close(current_fd)
+        raise
+    except OSError as exc:
+        if current_fd is not None:
+            os.close(current_fd)
+        _fail(f"Unable to traverse evidence path safely: {exc}")
+
+
+def _open_regular_nofollow(
+    path: str | Path,
+    *,
+    nonblocking: bool,
+) -> BinaryIO:
+    """Open one regular file through a no-follow parent directory handle."""
+
+    absolute = Path(os.path.abspath(os.fspath(path)))
+    if not absolute.name:
+        _fail("Evidence input path must identify a file")
+
+    parent_fd: int | None = None
+    file_fd: int | None = None
+    try:
+        parent_fd = _open_directory_nofollow(absolute.parent)
+        file_fd = os.open(
+            absolute.name,
+            _regular_open_flags(nonblocking=nonblocking),
+            dir_fd=parent_fd,
+        )
+        opened_stat = os.fstat(file_fd)
+        if not stat.S_ISREG(opened_stat.st_mode):
+            _fail("Evidence artifact JSON input must be a regular file")
+        return os.fdopen(file_fd, "rb", closefd=True)
+    except EvidenceArtifactValidationError:
+        if file_fd is not None:
+            os.close(file_fd)
+        raise
+    except OSError as exc:
+        if file_fd is not None:
+            os.close(file_fd)
+        _fail(f"Unable to open evidence input safely: {exc}")
+    finally:
+        if parent_fd is not None:
+            os.close(parent_fd)
+
+
+def _open_bundle_member_nofollow(
+    root: str | Path,
+    relative: str,
+) -> BinaryIO:
+    """Open a bundle member beneath root with no-follow openat traversal."""
+
+    segments = relative.split("/")
+    current_fd: int | None = None
+    file_fd: int | None = None
+    try:
+        current_fd = _open_directory_nofollow(root)
+        directory_flags = _directory_open_flags()
+        for part in segments[:-1]:
+            next_fd = os.open(part, directory_flags, dir_fd=current_fd)
+            os.close(current_fd)
+            current_fd = next_fd
+        file_fd = os.open(
+            segments[-1],
+            _regular_open_flags(nonblocking=False),
+            dir_fd=current_fd,
+        )
+        opened_stat = os.fstat(file_fd)
+        if not stat.S_ISREG(opened_stat.st_mode):
+            _fail("Evidence bundle member must be a regular file")
+        return os.fdopen(file_fd, "rb", closefd=True)
+    except EvidenceArtifactValidationError:
+        if file_fd is not None:
+            os.close(file_fd)
+        raise
+    except OSError as exc:
+        if file_fd is not None:
+            os.close(file_fd)
+        _fail(f"Unable to open bundle member safely: {exc}")
+    finally:
+        if current_fd is not None:
+            os.close(current_fd)
+
+
 def load_evidence_artifact_json(
     path: str | Path,
     *,
@@ -122,14 +260,8 @@ def load_evidence_artifact_json(
     if not isinstance(max_bytes, int) or isinstance(max_bytes, bool) or max_bytes < 1:
         _fail("Evidence artifact JSON size limit must be a positive integer")
 
-    source = Path(path)
     try:
-        if source.is_symlink():
-            _fail("Evidence artifact JSON input must not be a symbolic link")
-        with source.open("rb") as handle:
-            opened_stat = os.fstat(handle.fileno())
-            if not stat.S_ISREG(opened_stat.st_mode):
-                _fail("Evidence artifact JSON input must be a regular file")
+        with _open_regular_nofollow(path, nonblocking=True) as handle:
             payload = handle.read(max_bytes + 1)
         if len(payload) > max_bytes:
             _fail("Evidence artifact JSON exceeds size limit")
@@ -428,7 +560,7 @@ def _require_unique_member_paths(members: Sequence[Mapping[str, Any]]) -> None:
     """Reject duplicate non-null descriptor paths at every verification level."""
 
     seen: set[str] = set()
-    for index, member in enumerate(members):
+    for member in members:
         path = member["path"]
         if path is None:
             continue
@@ -511,15 +643,6 @@ def _stream_sha256(handle: BinaryIO) -> str:
     return "sha256:" + digest.hexdigest()
 
 
-def _reject_symlink_components(root: Path, relative: str, index: int) -> Path:
-    current = root
-    for part in relative.split("/"):
-        current = current / part
-        if current.is_symlink():
-            _fail(f"Member {index} path contains a symbolic-link component")
-    return current
-
-
 def _filesystem_identity(stat_result: os.stat_result) -> tuple[int, int]:
     """Return a stable filesystem object identity or fail closed."""
 
@@ -534,15 +657,7 @@ def _verify_bundle(
     members: Sequence[Mapping[str, Any]],
     bundle_root: str | Path,
 ) -> None:
-    supplied_root = Path(bundle_root)
-    if supplied_root.is_symlink():
-        _fail("Evidence bundle root must not be a symbolic link")
-    try:
-        root = supplied_root.resolve(strict=True)
-    except OSError as exc:
-        _fail(f"Evidence bundle root is unavailable: {exc}")
-    if not root.is_dir():
-        _fail("Evidence bundle root must be a directory")
+    root = Path(os.path.abspath(os.fspath(bundle_root)))
 
     for index, member in enumerate(members):
         if member["path"] is None:
@@ -551,32 +666,19 @@ def _verify_bundle(
                 "requires every member to be path-bound"
             )
 
-    seen_descriptor_paths: set[str] = set()
     seen_resolved_paths: set[str] = set()
     seen_identities: set[tuple[int, int]] = set()
 
     for index, member in enumerate(members):
         relative = _validate_safe_path(member["path"])
-        if relative in seen_descriptor_paths:
-            _fail(f"Duplicate evidence bundle descriptor path: {relative}")
-        seen_descriptor_paths.add(relative)
-
-        candidate = _reject_symlink_components(root, relative, index)
-        try:
-            resolved = candidate.resolve(strict=True)
-            resolved.relative_to(root)
-        except (OSError, ValueError):
-            _fail(f"Member {index} is missing or escapes the bundle root")
-        if not resolved.is_file():
-            _fail(f"Member {index} is not a regular file")
-
-        normalized_resolved = os.path.normcase(str(resolved))
-        if normalized_resolved in seen_resolved_paths:
+        candidate = root.joinpath(*relative.split("/"))
+        normalized_candidate = os.path.normcase(os.path.abspath(candidate))
+        if normalized_candidate in seen_resolved_paths:
             _fail(f"Member {index} resolves to an already-bound filesystem path")
-        seen_resolved_paths.add(normalized_resolved)
+        seen_resolved_paths.add(normalized_candidate)
 
         try:
-            with resolved.open("rb") as handle:
+            with _open_bundle_member_nofollow(root, relative) as handle:
                 stat_result = os.fstat(handle.fileno())
                 identity = _filesystem_identity(stat_result)
                 if identity in seen_identities:
