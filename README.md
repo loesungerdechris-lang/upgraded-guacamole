@@ -39,6 +39,8 @@ tests/         Verifier, fixtures, and red-team style tests
 - receipt tamper tests for subject, evidence, signature, key status, role binding and chain data
 - fixed-host Wayback snapshot discovery and read-only capture retrieval
 - SHA-256 evidence manifests and local-only archived-page reconstruction
+- strict HOLD and internal VERIFIED validation for Wayback manifests
+- explicit rejection of PUBLISHED Wayback manifests until the separate receipt gate exists
 - CI checks for JSON validity, forbidden secret-like files, linting, and tests
 
 ## Ground rules
@@ -63,19 +65,26 @@ pytest -q
 
 The Wayback integration is read-only and fail-closed. It uses only the official Internet Archive Availability, CDX, and replay hosts. It can discover historical captures, retrieve selected archived bytes without executing them, build deterministic SHA-256 evidence manifests, and materialize a local offline reconstruction bundle.
 
-Automatic Save Page Now submissions, third-party rebuild services, archived JavaScript execution, and publication of restored content remain disabled. Publication requires a separate rights and SENTINEL release review.
+Automatic Save Page Now submissions, third-party rebuild services, archived JavaScript execution, and publication of restored content remain disabled. `HOLD` is the normal state. `VERIFIED` requires explicit internal review-aware validation. `PUBLISHED` remains blocked until a separately reviewed release-receipt verifier is implemented.
 
 ```text
 src/sentinel_core/wayback.py
+src/sentinel_core/wayback_manifest.py
+schemas/sentinel.wayback.evidence.v1.json
 config/wayback-source-policy.json
 docs/wayback-evidence-layer.md
+docs/wayback-evidence-policy.md
+docs/wayback-policy-schema-consistency.md
+docs/phase3-multi-source-historical-evidence-spec.md
+docs/wayback-release-receipt-gate.md
 tests/test_wayback.py
+tests/test_wayback_manifest.py
 ```
 
 Run the dedicated test gate:
 
 ```bash
-pytest -q tests/test_wayback.py
+pytest -q tests/test_wayback.py tests/test_wayback_manifest.py
 ```
 
 ## Receipt verifier gate
