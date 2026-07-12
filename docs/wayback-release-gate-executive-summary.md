@@ -63,4 +63,4 @@ The future verifier may return only a machine-readable verified gate result or `
 - publication: not authorized;
 - merge and production activation: require separate explicit GO decisions.
 
-This summary is explanatory. In any conflict, the normative release-gate specification, evidence policy, schema, validator, and signed release policy take precedence.
+This summary is explanatory. In any conflict, the normative release-gate specification, evidence policy, schema, validator, and signed release policy take precedence. Until those gates are implemented and independently approved, the release path remains fail-closed.
