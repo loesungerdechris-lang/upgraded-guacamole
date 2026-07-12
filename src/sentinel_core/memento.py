@@ -8,6 +8,7 @@ are retained as declared provenance and remain unverified until acquisition.
 from __future__ import annotations
 
 import hashlib
+import math
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -62,6 +63,19 @@ __all__ = [
 class _NoRedirectHandler(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
         raise MementoResponseError("Memento redirects are disabled")
+
+
+def _retry_delay(value: str | None, attempt: int) -> float:
+    fallback = float(2 ** (attempt - 1))
+    if value is None:
+        return fallback
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    if not math.isfinite(parsed) or parsed < 0:
+        return fallback
+    return min(parsed, 30.0)
 
 
 def _default_transport(
@@ -201,15 +215,7 @@ class MementoAdapter(BaseArchiveAdapter):
                             f"TimeMap request failed with HTTP {response.status_code}"
                         )
                     retry_after = header_value(response.headers, "Retry-After")
-                    try:
-                        delay = (
-                            min(float(retry_after), 30.0)
-                            if retry_after
-                            else 2 ** (attempt - 1)
-                        )
-                    except ValueError:
-                        delay = 2 ** (attempt - 1)
-                    self.sleeper(float(delay))
+                    self.sleeper(_retry_delay(retry_after, attempt))
                     continue
                 if response.status_code != 200:
                     raise MementoRequestError(
@@ -223,15 +229,7 @@ class MementoAdapter(BaseArchiveAdapter):
                         f"TimeMap request failed with HTTP {exc.code}"
                     ) from None
                 retry_after = exc.headers.get("Retry-After") if exc.headers else None
-                try:
-                    delay = (
-                        min(float(retry_after), 30.0)
-                        if retry_after
-                        else 2 ** (attempt - 1)
-                    )
-                except ValueError:
-                    delay = 2 ** (attempt - 1)
-                self.sleeper(float(delay))
+                self.sleeper(_retry_delay(retry_after, attempt))
             except OSError:
                 if attempt == self.max_attempts:
                     raise MementoRequestError("TimeMap request failed") from None
