@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -28,6 +29,10 @@ _UTC_TIMESTAMP_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$"
 )
 _CONTROL_CHARACTER_RE = re.compile(r"[\x00-\x1f\x7f]")
+_WINDOWS_RESERVED_SEGMENT_RE = re.compile(
+    r"^(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$",
+    re.IGNORECASE,
+)
 _SAFE_INTEGER = 2**53 - 1
 _MAX_JSON_BYTES = 16 * 1024 * 1024
 
@@ -114,12 +119,22 @@ def load_evidence_artifact_json(
 ) -> dict[str, Any]:
     """Load bounded strict UTF-8 JSON and reject invalid Unicode scalars."""
 
+    if not isinstance(max_bytes, int) or isinstance(max_bytes, bool) or max_bytes < 1:
+        _fail("Evidence artifact JSON size limit must be a positive integer")
+
     source = Path(path)
     try:
-        if source.stat().st_size > max_bytes:
+        if source.is_symlink():
+            _fail("Evidence artifact JSON input must not be a symbolic link")
+        with source.open("rb") as handle:
+            opened_stat = os.fstat(handle.fileno())
+            if not stat.S_ISREG(opened_stat.st_mode):
+                _fail("Evidence artifact JSON input must be a regular file")
+            payload = handle.read(max_bytes + 1)
+        if len(payload) > max_bytes:
             _fail("Evidence artifact JSON exceeds size limit")
-        with source.open("r", encoding="utf-8", errors="strict") as handle:
-            value = json.load(handle, object_pairs_hook=_reject_duplicate_pairs)
+        text = payload.decode("utf-8", errors="strict")
+        value = json.loads(text, object_pairs_hook=_reject_duplicate_pairs)
     except EvidenceArtifactValidationError:
         raise
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
@@ -398,6 +413,12 @@ def _validate_safe_path(value: str) -> str:
     segments = value.split("/")
     if any(segment in {"", ".", ".."} for segment in segments):
         _fail("Non-canonical evidence bundle path")
+    if any(
+        segment.endswith((" ", "."))
+        or _WINDOWS_RESERVED_SEGMENT_RE.fullmatch(segment)
+        for segment in segments
+    ):
+        _fail("Windows-reserved evidence bundle path segment")
     if "/".join(segments) != value or PurePosixPath(value).as_posix() != value:
         _fail("Non-canonical evidence bundle path")
     return value
