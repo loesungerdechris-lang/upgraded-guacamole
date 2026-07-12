@@ -50,42 +50,82 @@ jobs:
           python -m pip install -e .[dev]
 
       - name: Guard verifier-only HOLD boundary
-        shell: bash
         run: |
-          set -euo pipefail
-          spec="docs/sentinel-evidence-artifact-spec.md"
-          path_spec="docs/sentinel-evidence-artifact-path-rules.md"
-          schema="schemas/sentinel.evidence.artifact.v1.json"
-          module="src/sentinel_core/evidence_artifact.py"
+          python - <<'PY'
+          from pathlib import Path
+          import re
 
-          grep -F '**Status:** DRAFT / HOLD' "$spec"
-          grep -F '**Activation authority:** none' "$spec"
-          grep -F '**Signing authority:** none' "$spec"
-          grep -F '**Publication authority:** none' "$spec"
-          grep -F '**Status:** DRAFT / HOLD' "$path_spec"
-          grep -F '**Activation authority:** none' "$path_spec"
-          grep -F '**Publication authority:** none' "$path_spec"
-          grep -F 'The verifier never repairs, normalizes, rewrites' "$path_spec"
-          grep -F '"status": {"const": "HOLD"}' "$schema"
-          grep -F 'release_authorized: bool = False' "$module"
-          grep -F 'temporal_anchor_verified: bool = False' "$module"
-          grep -F '"publication": False' "$module"
-          grep -F 'Non-canonical evidence bundle path' "$module"
-          grep -F 'already-bound filesystem object' "$module"
-          grep -F 'Stable filesystem object identity is unavailable; BYTES is blocked' "$module"
-          grep -F 'if ":" in value' "$module"
-          grep -F '(?!.*:)' "$schema"
-          grep -F '(?!.*//)' "$schema"
-          grep -F '(?!.*[\u0000-\u001F\u007F])' "$schema"
+          files = {
+              "spec": Path("docs/sentinel-evidence-artifact-spec.md").read_text(
+                  encoding="utf-8"
+              ),
+              "path_spec": Path(
+                  "docs/sentinel-evidence-artifact-path-rules.md"
+              ).read_text(encoding="utf-8"),
+              "schema": Path(
+                  "schemas/sentinel.evidence.artifact.v1.json"
+              ).read_text(encoding="utf-8"),
+              "module": Path("src/sentinel_core/evidence_artifact.py").read_text(
+                  encoding="utf-8"
+              ),
+          }
 
-          forbidden='(^|[[:space:]])(requests|httpx|aiohttp|socket|subprocess)[[:space:].]'
-          forbidden+='|private_key|generate_private_key|sign\('
-          forbidden+='|publish\(|Save Page Now|pull_request_target'
+          required = {
+              "spec": [
+                  "**Status:** DRAFT / HOLD",
+                  "**Activation authority:** none",
+                  "**Signing authority:** none",
+                  "**Publication authority:** none",
+              ],
+              "path_spec": [
+                  "**Status:** DRAFT / HOLD",
+                  "**Activation authority:** none",
+                  "**Publication authority:** none",
+                  "The verifier never repairs, normalizes, rewrites",
+                  "contain no colon",
+                  "Alternate Data Stream",
+              ],
+              "schema": [
+                  '"status": {"const": "HOLD"}',
+                  "(?!.*:)",
+                  "(?!.*//)",
+                  r"(?!.*[\u0000-\u001F\u007F])",
+              ],
+              "module": [
+                  "release_authorized: bool = False",
+                  "temporal_anchor_verified: bool = False",
+                  '"publication": False',
+                  "Non-canonical evidence bundle path",
+                  "already-bound filesystem object",
+                  "Stable filesystem object identity is unavailable; BYTES is blocked",
+                  'if ":" in value',
+              ],
+          }
 
-          if grep -nEi "$forbidden" "$module"; then
-            echo "Evidence artifact verifier boundary was widened." >&2
-            exit 1
-          fi
+          missing = []
+          for file_name, tokens in required.items():
+              for token in tokens:
+                  if token not in files[file_name]:
+                      missing.append(f"{file_name}: {token}")
+          if missing:
+              raise SystemExit(
+                  "Evidence artifact HOLD guard missing required tokens:\n- "
+                  + "\n- ".join(missing)
+              )
+
+          forbidden = re.compile(
+              r"(^|\s)(requests|httpx|aiohttp|socket|subprocess)[\s.]"
+              r"|private_key|generate_private_key|sign\("
+              r"|publish\(|Save Page Now|pull_request_target",
+              re.IGNORECASE | re.MULTILINE,
+          )
+          match = forbidden.search(files["module"])
+          if match:
+              raise SystemExit(
+                  "Evidence artifact verifier boundary was widened: "
+                  + match.group(0)
+              )
+          PY
 
       - name: Validate schema JSON
         run: python -m json.tool schemas/sentinel.evidence.artifact.v1.json >/dev/null
