@@ -23,6 +23,9 @@ from sentinel_core.schema import repository_root
 
 ZERO_HASH = "sha256:" + "0" * 64
 _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+_UTC_TIMESTAMP_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$"
+)
 _SAFE_INTEGER = 2**53 - 1
 _MAX_JSON_BYTES = 16 * 1024 * 1024
 
@@ -300,8 +303,11 @@ def verify_merkle_proof(
 
 
 def _parse_utc(value: str) -> datetime:
-    if not isinstance(value, str) or not value.endswith("Z"):
-        _fail("Timestamp must be RFC3339 UTC ending Z")
+    if not isinstance(value, str) or not _UTC_TIMESTAMP_RE.fullmatch(value):
+        _fail(
+            "Timestamp must be RFC3339 UTC ending Z with at most six "
+            "fractional-second digits"
+        )
     try:
         parsed = datetime.fromisoformat(value[:-1] + "+00:00")
     except ValueError as exc:
@@ -344,6 +350,34 @@ def _validate_safe_path(value: str) -> str:
     if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
         _fail("Unsafe evidence bundle path")
     return value
+
+
+def _validate_source_profile(member: Mapping[str, Any], index: int) -> None:
+    provenance = member["provenance"]
+    memento_by_id = member["source_id"] == "memento-discovery"
+    memento_by_origin = provenance["source_origin"] == "memento-protocol-discovery"
+    if not (memento_by_id or memento_by_origin):
+        return
+    expected = {
+        "source_id": "memento-discovery",
+        "kind": "DISCOVERY_RECORD",
+        "source_origin": "memento-protocol-discovery",
+        "identity_status": "DECLARED",
+        "datetime_status": "DECLARED",
+        "acquisition_authority": "separate_policy_required",
+    }
+    actual = {
+        "source_id": member["source_id"],
+        "kind": member["kind"],
+        "source_origin": provenance["source_origin"],
+        "identity_status": provenance["identity_status"],
+        "datetime_status": provenance["datetime_status"],
+        "acquisition_authority": provenance["acquisition_authority"],
+    }
+    if actual != expected:
+        _fail(
+            f"Member {index} violates the fixed Memento discovery provenance profile"
+        )
 
 
 def _validate_lifecycle(
@@ -392,27 +426,42 @@ def _file_sha256(path: Path) -> str:
     return "sha256:" + digest.hexdigest()
 
 
+def _reject_symlink_components(root: Path, relative: str, index: int) -> Path:
+    current = root
+    for part in PurePosixPath(relative).parts:
+        current = current / part
+        if current.is_symlink():
+            _fail(f"Member {index} path contains a symbolic-link component")
+    return current
+
+
 def _verify_bundle(
     members: Sequence[Mapping[str, Any]],
     bundle_root: str | Path,
 ) -> None:
+    supplied_root = Path(bundle_root)
+    if supplied_root.is_symlink():
+        _fail("Evidence bundle root must not be a symbolic link")
     try:
-        root = Path(bundle_root).resolve(strict=True)
+        root = supplied_root.resolve(strict=True)
     except OSError as exc:
         _fail(f"Evidence bundle root is unavailable: {exc}")
     if not root.is_dir():
         _fail("Evidence bundle root must be a directory")
-    seen_paths: set[str] = set()
     for index, member in enumerate(members):
         if member["path"] is None:
-            continue
+            _fail(
+                f"Member {index} has no bundle path; BYTES verification "
+                "requires every member to be path-bound"
+            )
+
+    seen_paths: set[str] = set()
+    for index, member in enumerate(members):
         relative = _validate_safe_path(member["path"])
         if relative in seen_paths:
             _fail(f"Duplicate evidence bundle path: {relative}")
         seen_paths.add(relative)
-        candidate = root.joinpath(*PurePosixPath(relative).parts)
-        if candidate.is_symlink():
-            _fail(f"Member {index} is a symbolic link")
+        candidate = _reject_symlink_components(root, relative, index)
         try:
             resolved = candidate.resolve(strict=True)
             resolved.relative_to(root)
@@ -466,11 +515,15 @@ def validate_evidence_artifact(
     member_hashes: list[str] = []
     payload_hashes: set[str] = set()
     for index, member in enumerate(members):
+        _validate_source_profile(member, index)
         if member["member_hash"] != compute_member_hash(member):
             _fail(f"Member {index} descriptor hash mismatch")
         if member["path"] is not None:
             _validate_safe_path(member["path"])
-        if member["observed_at"] is not None and _parse_utc(member["observed_at"]) > created_at:
+        if (
+            member["observed_at"] is not None
+            and _parse_utc(member["observed_at"]) > created_at
+        ):
             _fail(f"Member {index} observation occurs after artifact creation")
         member_hashes.append(member["member_hash"])
         payload_hashes.add(member["sha256"])
@@ -478,7 +531,9 @@ def validate_evidence_artifact(
     conflict_hashes: list[str] = []
     member_hash_set = set(member_hashes)
     for index, conflict in enumerate(conflicts):
-        _require_sorted_hashes(conflict["member_hashes"], f"conflict {index} member_hashes")
+        _require_sorted_hashes(
+            conflict["member_hashes"], f"conflict {index} member_hashes"
+        )
         if any(value not in member_hash_set for value in conflict["member_hashes"]):
             _fail(f"Conflict {index} references unknown member hash")
         if conflict["conflict_hash"] != compute_conflict_hash(conflict):
