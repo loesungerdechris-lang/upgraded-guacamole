@@ -81,4 +81,13 @@ jobs:
         run: ruff check src/sentinel_core/evidence_artifact.py tests/test_evidence_artifact.py
 
       - name: Test evidence artifact
-        run: pytest -q tests/test_evidence_artifact.py
+        run: pytest -q tests/test_evidence_artifact.py --junitxml=evidence-artifact-junit.xml
+
+      - name: Upload non-sensitive test report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: evidence-artifact-test-report
+          path: evidence-artifact-junit.xml
+          if-no-files-found: error
+          retention-days: 1
