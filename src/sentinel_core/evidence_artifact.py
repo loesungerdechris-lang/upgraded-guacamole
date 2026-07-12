@@ -68,9 +68,39 @@ def _fail(message: str) -> None:
     raise EvidenceArtifactValidationError(message)
 
 
+def _validate_unicode_scalar_string(value: str, path: str) -> None:
+    """Reject isolated UTF-16 surrogates before canonicalization or hashing."""
+
+    try:
+        value.encode("utf-8", errors="strict")
+    except UnicodeEncodeError:
+        _fail(f"String contains an isolated Unicode surrogate at {path}")
+
+
+def _validate_unicode_scalars(value: Any, path: str = "<root>") -> None:
+    """Recursively validate Unicode scalar safety for keys and string values."""
+
+    if isinstance(value, str):
+        _validate_unicode_scalar_string(value, path)
+        return
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            _validate_unicode_scalars(item, f"{path}/{index}")
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if isinstance(key, str):
+                _validate_unicode_scalar_string(key, f"{path}/<key>")
+                child_path = f"{path}/{key}" if key.isascii() else f"{path}/<key>"
+            else:
+                child_path = f"{path}/<non-string-key>"
+            _validate_unicode_scalars(item, child_path)
+
+
 def _reject_duplicate_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
+        _validate_unicode_scalar_string(key, "<json-key>")
         if key in result:
             _fail(f"Duplicate JSON object key: {key}")
         result[key] = value
@@ -82,13 +112,13 @@ def load_evidence_artifact_json(
     *,
     max_bytes: int = _MAX_JSON_BYTES,
 ) -> dict[str, Any]:
-    """Load bounded UTF-8 JSON while rejecting duplicate object keys."""
+    """Load bounded strict UTF-8 JSON and reject invalid Unicode scalars."""
 
     source = Path(path)
     try:
         if source.stat().st_size > max_bytes:
             _fail("Evidence artifact JSON exceeds size limit")
-        with source.open("r", encoding="utf-8") as handle:
+        with source.open("r", encoding="utf-8", errors="strict") as handle:
             value = json.load(handle, object_pairs_hook=_reject_duplicate_pairs)
     except EvidenceArtifactValidationError:
         raise
@@ -96,6 +126,7 @@ def load_evidence_artifact_json(
         _fail(f"Unable to load evidence artifact JSON: {exc}")
     if not isinstance(value, dict):
         _fail("Evidence artifact JSON root must be an object")
+    _validate_unicode_scalars(value)
     return value
 
 
@@ -126,7 +157,10 @@ def evidence_artifact_validator() -> Draft202012Validator:
 
 
 def _validate_canonical_domain(value: Any, path: str = "<root>") -> None:
-    if value is None or isinstance(value, (str, bool)):
+    if value is None or isinstance(value, bool):
+        return
+    if isinstance(value, str):
+        _validate_unicode_scalar_string(value, path)
         return
     if isinstance(value, int):
         if abs(value) > _SAFE_INTEGER:
@@ -140,7 +174,10 @@ def _validate_canonical_domain(value: Any, path: str = "<root>") -> None:
         return
     if isinstance(value, dict):
         for key, item in value.items():
-            if not isinstance(key, str) or not key.isascii():
+            if not isinstance(key, str):
+                _fail(f"Object keys must be ASCII strings at {path}")
+            _validate_unicode_scalar_string(key, f"{path}/<key>")
+            if not key.isascii():
                 _fail(f"Object keys must be ASCII strings at {path}")
             _validate_canonical_domain(item, f"{path}/{key}")
         return
@@ -163,7 +200,11 @@ def canonicalize_artifact_json(value: Any) -> str:
 def sha256_prefixed(data: str | bytes) -> str:
     """Return a lowercase prefixed SHA-256 identifier."""
 
-    raw = data.encode("utf-8") if isinstance(data, str) else data
+    if isinstance(data, str):
+        _validate_unicode_scalar_string(data, "<hash-input>")
+        raw = data.encode("utf-8", errors="strict")
+    else:
+        raw = data
     return "sha256:" + hashlib.sha256(raw).hexdigest()
 
 
