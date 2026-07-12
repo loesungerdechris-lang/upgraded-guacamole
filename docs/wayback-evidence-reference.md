@@ -20,9 +20,10 @@ Where documents differ, the following order applies:
 3. `docs/wayback-evidence-policy.md`;
 4. `docs/wayback-release-receipt-gate.md`;
 5. source-specific acquisition policies;
-6. `docs/phase3-multi-source-historical-evidence-spec.md`;
-7. implementation checklists and consistency reviews;
-8. executive summaries and this navigation reference.
+6. `docs/phase3-multi-source-threat-model.md`;
+7. `docs/phase3-multi-source-historical-evidence-spec.md`;
+8. implementation checklists and consistency reviews;
+9. executive summaries and this navigation reference.
 
 A summary cannot relax a gate defined by a higher-precedence source. Ambiguity fails closed.
 
@@ -84,11 +85,13 @@ Recurring operation requires an explicit GO/HOLD decision after a bounded review
 
 ### Phase 3 — Multi-Source Historical Evidence Engine
 
-Tracked in Issue #29 and specified in `docs/phase3-multi-source-historical-evidence-spec.md`.
+Tracked in Issue #29 and specified in `docs/phase3-multi-source-historical-evidence-spec.md` with security controls in `docs/phase3-multi-source-threat-model.md`.
 
 The Wayback Machine remains the primary source. archive.today-family services, Perma.cc, Memento discovery, ArchiveBox, and SingleFile are separate Evidence Sources. Each needs its own policy, host boundary, timestamp semantics, provenance, hash, tests, and acquisition authority.
 
 No secondary source inherits Internet Archive trust. Cross-verification records agreement, disagreement, and gaps; it does not merge incompatible captures or establish factual truth by source count.
+
+A bounded offline Phase 3 pilot may be designed under HOLD before publication exists. Issue #30 remains the separate publication dependency and grants no adapter or acquisition authority.
 
 ## 5. Manifest and provenance model
 
@@ -165,20 +168,21 @@ The current and planned architecture addresses:
 
 - SSRF and private-address access;
 - numeric loopback aliases;
-- unsafe redirects and credential-bearing URLs;
+- DNS rebinding and unsafe redirects;
 - replay/capture mismatch;
 - malformed CDX or availability responses;
-- response-size abuse;
-- path traversal and symlink escapes;
+- response-size abuse and decompression bombs;
+- path traversal, symlink escapes, and race conditions;
 - artifact and manifest tampering;
-- active-content execution;
+- active-content execution and parser compromise;
 - live-resource substitution;
 - provenance laundering between archives;
 - timestamp-semantic confusion;
 - false confidence from archive redundancy;
-- privacy and victim-safety risk;
+- privacy, victim-safety, and investigative-interest disclosure;
 - signing-key leakage and role spoofing;
-- automatic status elevation.
+- supply-chain compromise;
+- automatic status elevation and release-destination substitution.
 
 Any unsupported or ambiguous condition returns HOLD or an explicit failure. It is never converted into a successful absence or approval finding.
 
@@ -192,7 +196,7 @@ It may also preserve lawful public historical web records connected to sensitive
 
 - Draft PR #27: open, mergeable, DRAFT / HOLD;
 - Issue #28: Phase 2 planning;
-- Issue #29: Phase 3 planning;
+- Issue #29: Phase 3 planning and threat model;
 - Issue #30: receipt-bound publication verifier planning;
 - publication verifier: not implemented;
 - publication authority: not granted;
@@ -210,6 +214,7 @@ config/wayback-source-policy.json
 docs/wayback-evidence-policy.md
 docs/wayback-policy-schema-consistency.md
 docs/phase3-multi-source-historical-evidence-spec.md
+docs/phase3-multi-source-threat-model.md
 docs/wayback-release-receipt-gate.md
 docs/wayback-release-gate-executive-summary.md
 docs/wayback-release-verifier-implementation-checklist.md
@@ -220,7 +225,7 @@ tests/test_wayback_manifest.py
 
 ## 12. Change-control rule
 
-Any change that widens trusted hosts, enables credentials, adds recurring acquisition, performs archive writes, executes active content, allows live fallback, weakens HOLD, changes release roles or thresholds, adds signing capability, or enables publication requires:
+Any change that widens trusted hosts, enables credentials, adds recurring acquisition, performs archive writes, executes active content, adds extraction parsers, allows live fallback, weakens HOLD, changes release roles or thresholds, adds signing capability, or enables publication requires:
 
 - a separate scoped change;
 - updated threat and policy analysis;
