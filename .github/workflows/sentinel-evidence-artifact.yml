@@ -7,6 +7,7 @@ on:
       - agent/phase3-pilot-threat-model-hold
     paths:
       - "docs/sentinel-evidence-artifact-spec.md"
+      - "docs/sentinel-evidence-artifact-path-rules.md"
       - "schemas/sentinel.evidence.artifact.v1.json"
       - "src/sentinel_core/evidence_artifact.py"
       - "tests/test_evidence_artifact.py"
@@ -15,6 +16,7 @@ on:
     branches: ["main"]
     paths:
       - "docs/sentinel-evidence-artifact-spec.md"
+      - "docs/sentinel-evidence-artifact-path-rules.md"
       - "schemas/sentinel.evidence.artifact.v1.json"
       - "src/sentinel_core/evidence_artifact.py"
       - "tests/test_evidence_artifact.py"
@@ -50,6 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           spec="docs/sentinel-evidence-artifact-spec.md"
+          path_spec="docs/sentinel-evidence-artifact-path-rules.md"
           schema="schemas/sentinel.evidence.artifact.v1.json"
           module="src/sentinel_core/evidence_artifact.py"
 
@@ -57,10 +60,16 @@ jobs:
           grep -F '**Activation authority:** none' "$spec"
           grep -F '**Signing authority:** none' "$spec"
           grep -F '**Publication authority:** none' "$spec"
+          grep -F '**Status:** DRAFT / HOLD' "$path_spec"
+          grep -F '**Activation authority:** none' "$path_spec"
+          grep -F '**Publication authority:** none' "$path_spec"
+          grep -F 'The verifier never repairs, normalizes, rewrites' "$path_spec"
           grep -F '"status": {"const": "HOLD"}' "$schema"
           grep -F 'release_authorized: bool = False' "$module"
           grep -F 'temporal_anchor_verified: bool = False' "$module"
           grep -F '"publication": False' "$module"
+          grep -F 'Non-canonical evidence bundle path' "$module"
+          grep -F 'already-bound filesystem object' "$module"
 
           forbidden='(^|[[:space:]])(requests|httpx|aiohttp|socket|subprocess)[[:space:].]'
           forbidden+='|private_key|generate_private_key|sign\('
