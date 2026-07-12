@@ -424,6 +424,20 @@ def _validate_safe_path(value: str) -> str:
     return value
 
 
+def _require_unique_member_paths(members: Sequence[Mapping[str, Any]]) -> None:
+    """Reject duplicate non-null descriptor paths at every verification level."""
+
+    seen: set[str] = set()
+    for index, member in enumerate(members):
+        path = member["path"]
+        if path is None:
+            continue
+        canonical = _validate_safe_path(path)
+        if canonical in seen:
+            _fail(f"Duplicate evidence bundle descriptor path: {canonical}")
+        seen.add(canonical)
+
+
 def _validate_source_profile(member: Mapping[str, Any], index: int) -> None:
     provenance = member["provenance"]
     memento_by_id = member["source_id"] == "memento-discovery"
@@ -616,6 +630,7 @@ def validate_evidence_artifact(
     _require_sorted_unique(conflicts, "conflict_id", "conflicts")
     _require_sorted_unique(governance["policies"], "policy_id", "policies")
     _require_sorted_unique(governance["registries"], "registry_id", "registries")
+    _require_unique_member_paths(members)
 
     member_hashes: list[str] = []
     payload_hashes: set[str] = set()
