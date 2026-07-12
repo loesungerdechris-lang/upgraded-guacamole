@@ -12,9 +12,11 @@ on:
       - "config/wayback-source-policy.json"
       - "docs/wayback-evidence-layer.md"
       - "docs/wayback-evidence-policy.md"
+      - "docs/wayback-evidence-reference.md"
       - "docs/wayback-policy-schema-consistency.md"
       - "docs/phase3-multi-source-historical-evidence-spec.md"
       - "docs/wayback-release-receipt-gate.md"
+      - "docs/wayback-release-gate-executive-summary.md"
       - "docs/wayback-release-verifier-implementation-checklist.md"
       - ".github/workflows/sentinel-wayback-evidence.yml"
   push:
@@ -28,9 +30,11 @@ on:
       - "config/wayback-source-policy.json"
       - "docs/wayback-evidence-layer.md"
       - "docs/wayback-evidence-policy.md"
+      - "docs/wayback-evidence-reference.md"
       - "docs/wayback-policy-schema-consistency.md"
       - "docs/phase3-multi-source-historical-evidence-spec.md"
       - "docs/wayback-release-receipt-gate.md"
+      - "docs/wayback-release-gate-executive-summary.md"
       - "docs/wayback-release-verifier-implementation-checklist.md"
       - ".github/workflows/sentinel-wayback-evidence.yml"
 
