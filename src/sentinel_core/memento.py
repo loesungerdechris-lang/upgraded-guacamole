@@ -18,10 +18,8 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from sentinel_core.memento_model import (
     DEFAULT_MEMENTO_USER_AGENT,
-    HOLD_STATUS,
     MAX_TIMEMAP_BYTES,
     MEMENTO_SOURCE_ORIGIN,
-    SEPARATE_POLICY_REQUIRED,
     ArchiveHTTPResponse,
     MementoAdapterError,
     MementoConfigurationError,
