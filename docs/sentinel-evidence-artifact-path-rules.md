@@ -20,7 +20,8 @@ an alternate path spelling. A non-canonical path is invalid evidence input.
 
 A member path is a portable POSIX-relative identifier interpreted beneath one
 explicitly supplied bundle root. It is not a URL, native operating-system path,
-search path, glob, shell expression, or authorization to access another location.
+search path, glob, shell expression, Windows drive path, drive-relative path,
+NTFS Alternate Data Stream name, or authorization to access another location.
 
 A path must:
 
@@ -30,6 +31,7 @@ A path must:
 - contain no leading or trailing `/`;
 - contain no empty segment;
 - contain no `.` or `..` segment;
+- contain no colon;
 - contain no backslash;
 - contain no NUL, C0 control character, or DEL;
 - remain byte-for-byte unchanged by POSIX path parsing.
@@ -51,6 +53,9 @@ raw//alpha.html
 raw/./alpha.html
 raw/../alpha.html
 raw\alpha.html
+C:/raw/alpha.html
+raw/C:alpha.html
+raw/alpha.html:stream
 ```
 
 ## 3. No silent normalization
@@ -74,8 +79,8 @@ Changing it after validation would change the evidence commitment.
 
 The JSON Schema `safePath` definition and the semantic verifier must reject the
 same lexical path classes. A schema-only consumer must not accept empty segments,
-dot segments, dot-dot segments, trailing separators, backslashes, or control
-characters that the semantic verifier rejects.
+dot segments, dot-dot segments, trailing separators, colons, backslashes, or
+control characters that the semantic verifier rejects.
 
 Schema validity alone does not establish Level 3 `BYTES`. Filesystem identity,
 root confinement, symlink, file type, size, and SHA-256 checks remain mandatory.
@@ -168,19 +173,20 @@ The v1 suite must cover at least:
 3. duplicate separator;
 4. `.` segment;
 5. `..` segment;
-6. backslash;
-7. NUL or control character;
-8. schema and semantic rejection parity;
-9. duplicate canonical descriptor path;
-10. final symbolic link;
-11. intermediate symbolic link;
-12. hard-link alias;
-13. unavailable stable filesystem identity;
-14. missing member path during `BYTES`;
-15. root escape;
-16. missing file;
-17. byte-length mismatch;
-18. SHA-256 mismatch.
+6. colon, drive-qualified path, drive-relative path, or ADS syntax;
+7. backslash;
+8. NUL or control character;
+9. schema and semantic rejection parity;
+10. duplicate canonical descriptor path;
+11. final symbolic link;
+12. intermediate symbolic link;
+13. hard-link alias;
+14. unavailable stable filesystem identity;
+15. missing member path during `BYTES`;
+16. root escape;
+17. missing file;
+18. byte-length mismatch;
+19. SHA-256 mismatch.
 
 ## 13. Non-goals
 
