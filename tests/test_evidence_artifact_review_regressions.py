@@ -225,6 +225,59 @@ def test_bundle_open_does_not_follow_final_symlink(tmp_path):
         )
 
 
+def test_bundle_loader_rejects_fifo_without_blocking(tmp_path):
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("FIFO creation is unavailable")
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    fifo = raw / "alpha.html"
+    os.mkfifo(fifo)
+
+    with pytest.raises(
+        evidence_artifact.EvidenceArtifactValidationError,
+        match="Evidence bundle member must be a regular file",
+    ):
+        evidence_artifact._open_bundle_member_nofollow(
+            tmp_path,
+            "raw/alpha.html",
+        )
+
+
+def test_bundle_open_requires_nonblocking_capability(tmp_path, monkeypatch):
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "alpha.html").write_bytes(b"alpha")
+    nofollow, directory, _ = evidence_artifact._secure_open_capability()
+
+    monkeypatch.setattr(
+        evidence_artifact,
+        "_secure_open_capability",
+        lambda: (nofollow, directory, 0),
+    )
+
+    with pytest.raises(
+        evidence_artifact.EvidenceArtifactValidationError,
+        match="Secure nonblocking file opening is unavailable",
+    ):
+        evidence_artifact._open_bundle_member_nofollow(
+            tmp_path,
+            "raw/alpha.html",
+        )
+
+
+def test_bundle_open_accepts_regular_file(tmp_path):
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    member = raw / "alpha.html"
+    member.write_bytes(b"alpha")
+
+    with evidence_artifact._open_bundle_member_nofollow(
+        tmp_path,
+        "raw/alpha.html",
+    ) as handle:
+        assert handle.read() == b"alpha"
+
+
 def test_valid_supplementary_unicode_scalar_is_canonicalizable():
     canonical = evidence_artifact.canonicalize_artifact_json({"value": "\U0001f600"})
     assert canonical == '{"value":"\U0001f600"}'
