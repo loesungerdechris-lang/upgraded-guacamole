@@ -97,9 +97,29 @@ def test_non_hold_requires_explicit_release_aware_validation() -> None:
     )
     _rehash(manifest)
 
-    with pytest.raises(WaybackManifestValidationError, match="Non-HOLD"):
+    with pytest.raises(WaybackManifestValidationError, match="VERIFIED"):
         validate_wayback_manifest(manifest)
     validate_wayback_manifest(manifest, allow_non_hold=True)
+
+
+def test_published_stays_blocked_without_separate_receipt_gate() -> None:
+    manifest, _ = _manifest_and_bytes()
+    manifest["status"] = "PUBLISHED"
+    manifest["release_gate"].update(
+        {
+            "mode": "released",
+            "rights_review_status": "approved",
+            "privacy_review_status": "approved",
+            "provenance_review_status": "approved",
+            "sentinel_release_status": "APPROVED",
+            "publish_restored_content": True,
+            "release_receipt_sha256": "sha256:" + "2" * 64,
+        }
+    )
+    _rehash(manifest)
+
+    with pytest.raises(WaybackManifestValidationError, match="release-receipt gate"):
+        validate_wayback_manifest(manifest, allow_non_hold=True)
 
 
 def test_cross_source_record_does_not_expand_wayback_network_trust() -> None:
