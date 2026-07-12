@@ -222,9 +222,9 @@ def validate_wayback_manifest(
 ) -> None:
     """Validate schema, provenance, HOLD state, hash integrity, and local bytes.
 
-    The default path accepts only HOLD manifests. VERIFIED or PUBLISHED states
-    require an explicit caller decision and must still satisfy the schema's
-    stricter release conditions.
+    The normal path accepts only HOLD manifests. VERIFIED requires an explicit
+    release-aware internal decision. PUBLISHED remains blocked until the separate
+    receipt-bound publication verifier is implemented and independently reviewed.
     """
 
     if not isinstance(manifest, Mapping):
@@ -233,8 +233,10 @@ def validate_wayback_manifest(
     _validate_schema(manifest)
 
     status = manifest["status"]
-    if status != "HOLD" and not allow_non_hold:
-        _fail("Non-HOLD manifests require explicit release-aware validation")
+    if status == "PUBLISHED":
+        _fail("PUBLISHED manifests require the separate manual release-receipt gate")
+    if status == "VERIFIED" and not allow_non_hold:
+        _fail("VERIFIED manifests require explicit release-aware validation")
 
     if not verify_evidence_manifest(manifest):
         _fail("Manifest hash verification failed")
