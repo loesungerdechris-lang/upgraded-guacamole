@@ -34,6 +34,21 @@ The Evidence Artifact never rewrites these records into one invented
 provenance. It binds their byte hashes and source-specific descriptor hashes
 into a higher-level object.
 
+For v1, a Memento discovery member is valid only when all of the following are
+true:
+
+```text
+kind = DISCOVERY_RECORD
+source_id = memento-discovery
+source_origin = memento-protocol-discovery
+identity_status = DECLARED
+datetime_status = DECLARED
+acquisition_authority = separate_policy_required
+```
+
+Either Memento identifier activates this complete profile. Partial or
+contradictory combinations fail closed.
+
 ## 3. Directional, non-circular artifact family
 
 ```text
@@ -76,7 +91,7 @@ only `artifact_hash` removed. It therefore binds all four roots, counts,
 subjects, interpretation limits, HOLD status, temporal non-claim, and the
 explicit absence of release authority.
 
-## 5. Canonicalization profile
+## 5. Canonicalization and timestamp profile
 
 The prototype profile is `sentinel-canonical-json-v1`.
 
@@ -89,6 +104,10 @@ Canonical bytes are UTF-8 JSON with lexicographically sorted object keys, no
 insignificant whitespace, and no floating-point serialization. Production
 promotion requires published cross-language conformance vectors and a formal
 mapping to RFC 8785 JCS.
+
+All artifact timestamps use UTC `Z` form and allow zero through six
+fractional-second digits only. Greater precision is rejected before temporal
+ordering so implementations cannot disagree through silent truncation.
 
 ## 6. Evidence members
 
@@ -112,12 +131,14 @@ canonical member descriptor with only `member_hash` omitted. A metadata,
 provenance, path, byte-length or payload-hash change therefore invalidates the
 member descriptor.
 
-Provenance distinguishes declared identity from verified identity. In
-particular, Memento discovery records must retain unverified archive and
-datetime status until a separately approved archive adapter verifies them.
-
 Members are sorted by `member_id`; duplicate identifiers and bundle paths are
 rejected.
+
+A path may be null at binding Levels 0–2, for example when a descriptor binds
+content held by an external approved store. Level 3 `BYTES` verification is
+stricter: every member must have a unique safe bundle path and every bound byte
+sequence must be locally available and verified. A pathless member prevents a
+`BYTES` result.
 
 ## 7. Merkle commitment and selective disclosure
 
@@ -226,7 +247,7 @@ approval.
 Level 0  PARSE      bounded JSON, duplicate-key and schema checks
 Level 1  STRUCTURE  deterministic ordering, identifiers and safe paths
 Level 2  BINDINGS   member, conflict, governance, lifecycle and artifact hashes
-Level 3  BYTES      local bundle byte lengths and SHA-256 values
+Level 3  BYTES      every member path, byte length and SHA-256 verified locally
 Level 4  SOURCE     source-native verifier results, implemented separately
 Level 5  REVIEW     future Internal Review Envelope and role decisions
 Level 6  RELEASE    Issue #30 receipt and Published Envelope verification
@@ -242,9 +263,13 @@ The verifier must:
 - work fully offline;
 - contain no private key or signing helper;
 - perform no network request or archive acquisition;
-- reject unsafe paths, symlinks and bundle-root escapes;
+- reject unsafe paths, duplicate paths and bundle-root escapes;
+- reject symlinks in the supplied bundle root and every member path component;
+- refuse Level 3 when any member is not locally path-bound;
 - recompute all descriptor hashes, Merkle roots and lifecycle links;
 - reject unknown lifecycle hash references;
+- reject Memento provenance escalation or identifier mismatch;
+- reject timestamp precision beyond six fractional digits;
 - return machine-readable failure without silently repairing the artifact;
 - report `release_authorized = false` and
   `temporal_anchor_verified = false` for v1.
@@ -263,9 +288,10 @@ members with their own hashes and transformation events.
 
 The artifact design addresses payload tampering, metadata substitution,
 provenance laundering, conflict deletion, policy drift, review-to-run drift,
-record reordering, lifecycle omission, bundle traversal, symlink substitution,
-unsafe numeric canonicalization, duplicate JSON keys, release-status editing,
-and false temporal claims.
+record reordering, lifecycle omission, bundle traversal, final and intermediate
+symlink substitution, incomplete-byte verification, unsafe numeric or temporal
+canonicalization, duplicate JSON keys, release-status editing, and false
+temporal claims.
 
 It does not prove source truth, source independence, completeness of an archive,
 legal admissibility, rights clearance, or wall-clock existence without an
@@ -279,7 +305,7 @@ The v1 prototype is complete only when it provides:
 - verifier-only implementation;
 - deterministic root and artifact-hash calculation;
 - Merkle inclusion proof generation and verification;
-- local bundle byte verification;
+- complete local bundle byte verification;
 - adversarial tests for every integrity boundary;
 - dedicated read-only CI gate;
 - independent review on the exact commit;
