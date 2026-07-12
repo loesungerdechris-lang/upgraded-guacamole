@@ -77,6 +77,7 @@ docs/wayback-evidence-policy.md
 docs/wayback-evidence-reference.md
 docs/wayback-policy-schema-consistency.md
 docs/phase3-multi-source-historical-evidence-spec.md
+docs/phase3-multi-source-threat-model.md
 docs/wayback-release-receipt-gate.md
 docs/wayback-release-gate-executive-summary.md
 docs/wayback-release-verifier-implementation-checklist.md
@@ -96,7 +97,7 @@ The production-oriented receipt verifier is implemented as verifier-only code. I
 
 - canonical unsigned receipt payload
 - `chain.receipt_hash`
-- ES256/JWS-style signatures
+- ES256 JWS-style signatures
 - `kid`, algorithm and protected-header binding
 - trust-key active/revoked state
 - key validity windows
