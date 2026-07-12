@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -219,6 +220,12 @@ def rebind_members(value: dict) -> None:
     seal(value)
 
 
+def write_valid_bundle(root: Path) -> None:
+    (root / "raw").mkdir()
+    (root / "raw" / "alpha.html").write_bytes(b"alpha")
+    (root / "raw" / "beta.json").write_bytes(b"beta")
+
+
 def test_valid_artifact_is_integrity_ok_but_not_released():
     result = verify_evidence_artifact(make_artifact())
     assert result.status == "SEA_INTEGRITY_OK"
@@ -229,9 +236,7 @@ def test_valid_artifact_is_integrity_ok_but_not_released():
 
 def test_exact_local_bytes_raise_verification_to_bytes(tmp_path: Path):
     value = make_artifact()
-    (tmp_path / "raw").mkdir()
-    (tmp_path / "raw" / "alpha.html").write_bytes(b"alpha")
-    (tmp_path / "raw" / "beta.json").write_bytes(b"beta")
+    write_valid_bundle(tmp_path)
     assert verify_evidence_artifact(value, bundle_root=tmp_path).level == "BYTES"
 
 
@@ -244,11 +249,66 @@ def test_pathless_member_cannot_receive_bytes_level(tmp_path: Path):
     assert "requires every member to be path-bound" in result.issues[0].message
 
 
+@pytest.mark.parametrize(
+    "bad_path",
+    [
+        "/raw/alpha.html",
+        "raw/alpha.html/",
+        "raw//alpha.html",
+        "raw/./alpha.html",
+        "raw/../alpha.html",
+        "raw\\alpha.html",
+        "raw/alpha\x00.html",
+    ],
+)
+def test_noncanonical_descriptor_paths_are_rejected(bad_path: str):
+    value = make_artifact()
+    value["members"][0]["path"] = bad_path
+    rebind_members(value)
+    result = verify_evidence_artifact(value)
+    assert result.integrity_valid is False
+    assert (
+        "evidence bundle path" in result.issues[0].message
+        or "Schema validation failed" in result.issues[0].message
+    )
+
+
+def test_duplicate_descriptor_path_is_rejected(tmp_path: Path):
+    value = make_artifact()
+    value["members"][1]["path"] = "raw/alpha.html"
+    value["members"][1]["byte_length"] = len(b"alpha")
+    value["members"][1]["sha256"] = h(b"alpha")
+    rebind_members(value)
+    (tmp_path / "raw").mkdir()
+    (tmp_path / "raw" / "alpha.html").write_bytes(b"alpha")
+    result = verify_evidence_artifact(value, bundle_root=tmp_path)
+    assert result.integrity_valid is False
+    assert "Duplicate evidence bundle descriptor path" in result.issues[0].message
+
+
+def test_hardlink_alias_is_rejected_as_same_filesystem_object(tmp_path: Path):
+    value = make_artifact()
+    value["members"][1]["path"] = "raw/alias.json"
+    value["members"][1]["byte_length"] = len(b"alpha")
+    value["members"][1]["sha256"] = h(b"alpha")
+    rebind_members(value)
+    (tmp_path / "raw").mkdir()
+    source = tmp_path / "raw" / "alpha.html"
+    alias = tmp_path / "raw" / "alias.json"
+    source.write_bytes(b"alpha")
+    try:
+        os.link(source, alias)
+    except OSError:
+        pytest.skip("hardlinks unavailable")
+    result = verify_evidence_artifact(value, bundle_root=tmp_path)
+    assert result.integrity_valid is False
+    assert "already-bound filesystem object" in result.issues[0].message
+
+
 def test_payload_tamper_fails(tmp_path: Path):
     value = make_artifact()
-    (tmp_path / "raw").mkdir()
+    write_valid_bundle(tmp_path)
     (tmp_path / "raw" / "alpha.html").write_bytes(b"ALPHA")
-    (tmp_path / "raw" / "beta.json").write_bytes(b"beta")
     result = verify_evidence_artifact(value, bundle_root=tmp_path)
     assert result.integrity_valid is False
     assert "payload hash mismatch" in result.issues[0].message
