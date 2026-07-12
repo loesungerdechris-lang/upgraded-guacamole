@@ -59,7 +59,7 @@ An enabled test or future reviewed operation must provide:
 - `Accept: application/link-format`;
 - redirects disabled;
 - no cookies, credentials, authorization headers, or case metadata;
-- `Retry-After` handling and bounded backoff.
+- `Retry-After` handling with finite, nonnegative clamping and bounded fallback.
 
 The repository contains no active production endpoint, no approved external source allowlist, and no operational transport approval.
 
@@ -143,6 +143,7 @@ The implementation addresses:
 - conflicting or non-GMT datetimes;
 - `anchor`-based context substitution;
 - service throttling and retry abuse;
+- negative, malformed, and non-finite `Retry-After` values;
 - response-size exhaustion, including injected transports;
 - silent conversion of failures or pagination into absence;
 - accidental trust claims about candidate archive identity;
@@ -150,7 +151,7 @@ The implementation addresses:
 
 ## 10. Current test evidence
 
-The focused suite covers 25 offline cases, including:
+The focused suite covers 27 offline cases, including:
 
 - disabled-by-default behavior with zero transport calls;
 - enabled adapter rejection without a reviewed transport;
@@ -163,7 +164,9 @@ The focused suite covers 25 offline cases, including:
 - conflicting datetime for one Memento URI;
 - 404 versus query failure;
 - network failure;
-- `Retry-After` behavior;
+- valid `Retry-After` behavior;
+- negative `Retry-After` fallback;
+- non-finite `Retry-After` fallback from an HTTP error;
 - content-type rejection;
 - empty complete TimeMap;
 - endpoint and credential rejection;
