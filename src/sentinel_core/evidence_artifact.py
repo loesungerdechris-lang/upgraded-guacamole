@@ -350,7 +350,7 @@ def _validate_safe_path(value: str) -> str:
 
     if not isinstance(value, str) or not value:
         _fail("Unsafe evidence bundle path")
-    if "\\" in value or _CONTROL_CHARACTER_RE.search(value):
+    if ":" in value or "\\" in value or _CONTROL_CHARACTER_RE.search(value):
         _fail("Unsafe evidence bundle path")
     if value.startswith("/") or value.endswith("/"):
         _fail("Non-canonical evidence bundle path")
