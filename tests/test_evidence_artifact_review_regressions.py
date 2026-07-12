@@ -1,3 +1,4 @@
+import os
 import runpy
 from pathlib import Path
 from types import SimpleNamespace
@@ -172,6 +173,56 @@ def test_json_loader_rejects_non_regular_input():
         match="Evidence artifact JSON input must be a regular file",
     ):
         evidence_artifact.load_evidence_artifact_json(device)
+
+
+def test_json_loader_rejects_fifo_without_blocking(tmp_path):
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("FIFO creation is unavailable")
+    fifo = tmp_path / "artifact.fifo"
+    os.mkfifo(fifo)
+
+    with pytest.raises(
+        evidence_artifact.EvidenceArtifactValidationError,
+        match="Evidence artifact JSON input must be a regular file",
+    ):
+        evidence_artifact.load_evidence_artifact_json(fifo)
+
+
+def test_json_loader_does_not_follow_final_symlink(tmp_path):
+    target = tmp_path / "target.json"
+    target.write_bytes(b"{}")
+    link = tmp_path / "artifact.json"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("symlinks unavailable")
+
+    with pytest.raises(
+        evidence_artifact.EvidenceArtifactValidationError,
+        match="Unable to open evidence input safely",
+    ):
+        evidence_artifact.load_evidence_artifact_json(link)
+
+
+def test_bundle_open_does_not_follow_final_symlink(tmp_path):
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    target = tmp_path / "target.bin"
+    target.write_bytes(b"alpha")
+    link = raw / "alpha.html"
+    try:
+        link.symlink_to(target)
+    except OSError:
+        pytest.skip("symlinks unavailable")
+
+    with pytest.raises(
+        evidence_artifact.EvidenceArtifactValidationError,
+        match="Unable to open bundle member safely",
+    ):
+        evidence_artifact._open_bundle_member_nofollow(
+            tmp_path,
+            "raw/alpha.html",
+        )
 
 
 def test_valid_supplementary_unicode_scalar_is_canonicalizable():
