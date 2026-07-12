@@ -21,7 +21,8 @@ an alternate path spelling. A non-canonical path is invalid evidence input.
 A member path is a portable POSIX-relative identifier interpreted beneath one
 explicitly supplied bundle root. It is not a URL, native operating-system path,
 search path, glob, shell expression, Windows drive path, drive-relative path,
-NTFS Alternate Data Stream name, or authorization to access another location.
+NTFS Alternate Data Stream name, DOS device name, or authorization to access
+another location.
 
 A path must:
 
@@ -34,6 +35,9 @@ A path must:
 - contain no colon;
 - contain no backslash;
 - contain no NUL, C0 control character, or DEL;
+- contain no segment ending in a space or dot;
+- contain no case-insensitive DOS device segment `CON`, `PRN`, `AUX`, `NUL`,
+  `COM1` through `COM9`, or `LPT1` through `LPT9`, with or without an extension;
 - remain byte-for-byte unchanged by POSIX path parsing.
 
 Examples accepted:
@@ -56,6 +60,12 @@ raw\alpha.html
 C:/raw/alpha.html
 raw/C:alpha.html
 raw/alpha.html:stream
+raw/file.
+raw/file 
+raw/CON
+raw/con.txt
+raw/COM1.bin
+raw/LPT9
 ```
 
 ## 3. No silent normalization
@@ -79,8 +89,9 @@ Changing it after validation would change the evidence commitment.
 
 The JSON Schema `safePath` definition and the semantic verifier must reject the
 same lexical path classes. A schema-only consumer must not accept empty segments,
-dot segments, dot-dot segments, trailing separators, colons, backslashes, or
-control characters that the semantic verifier rejects.
+dot segments, dot-dot segments, trailing separators, colons, backslashes, control
+characters, trailing dot or space segments, or DOS device names that the semantic
+verifier rejects.
 
 Schema validity alone does not establish Level 3 `BYTES`. Filesystem identity,
 root confinement, symlink, file type, size, and SHA-256 checks remain mandatory.
@@ -93,6 +104,10 @@ the same canonical descriptor path.
 
 String aliases such as `raw/a`, `raw/./a`, and `raw//a` are not three paths. The
 last two are invalid and must not reach filesystem resolution.
+
+Windows-normalized names are rejected on every platform before resolution. This
+prevents a portable descriptor from naming `raw/file.` while a Windows API binds
+`raw/file`, or from naming a DOS device instead of a regular file.
 
 ## 6. Filesystem-level uniqueness
 
@@ -176,17 +191,20 @@ The v1 suite must cover at least:
 6. colon, drive-qualified path, drive-relative path, or ADS syntax;
 7. backslash;
 8. NUL or control character;
-9. schema and semantic rejection parity;
-10. duplicate canonical descriptor path;
-11. final symbolic link;
-12. intermediate symbolic link;
-13. hard-link alias;
-14. unavailable stable filesystem identity;
-15. missing member path during `BYTES`;
-16. root escape;
-17. missing file;
-18. byte-length mismatch;
-19. SHA-256 mismatch.
+9. segment ending in a dot;
+10. segment ending in a space;
+11. case-insensitive DOS device name with and without an extension;
+12. schema and semantic rejection parity;
+13. duplicate canonical descriptor path;
+14. final symbolic link;
+15. intermediate symbolic link;
+16. hard-link alias;
+17. unavailable stable filesystem identity;
+18. missing member path during `BYTES`;
+19. root escape;
+20. missing file;
+21. byte-length mismatch;
+22. SHA-256 mismatch.
 
 ## 13. Non-goals
 
