@@ -230,7 +230,7 @@ def _open_bundle_member_nofollow(
             current_fd = next_fd
         file_fd = os.open(
             segments[-1],
-            _regular_open_flags(nonblocking=False),
+            _regular_open_flags(nonblocking=True),
             dir_fd=current_fd,
         )
         opened_stat = os.fstat(file_fd)
