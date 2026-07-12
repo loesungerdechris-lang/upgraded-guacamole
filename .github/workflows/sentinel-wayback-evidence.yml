@@ -5,17 +5,25 @@ on:
     branches: ["main"]
     paths:
       - "src/sentinel_core/wayback.py"
+      - "src/sentinel_core/wayback_manifest.py"
       - "tests/test_wayback.py"
+      - "tests/test_wayback_manifest.py"
+      - "schemas/sentinel.wayback.evidence.v1.json"
       - "config/wayback-source-policy.json"
       - "docs/wayback-evidence-layer.md"
+      - "docs/wayback-evidence-policy.md"
       - ".github/workflows/sentinel-wayback-evidence.yml"
   push:
     branches: ["main"]
     paths:
       - "src/sentinel_core/wayback.py"
+      - "src/sentinel_core/wayback_manifest.py"
       - "tests/test_wayback.py"
+      - "tests/test_wayback_manifest.py"
+      - "schemas/sentinel.wayback.evidence.v1.json"
       - "config/wayback-source-policy.json"
       - "docs/wayback-evidence-layer.md"
+      - "docs/wayback-evidence-policy.md"
       - ".github/workflows/sentinel-wayback-evidence.yml"
 
 permissions:
@@ -48,6 +56,7 @@ jobs:
         run: |
           set -euo pipefail
           source_file="src/sentinel_core/wayback.py"
+          validator_file="src/sentinel_core/wayback_manifest.py"
           policy_file="config/wayback-source-policy.json"
 
           grep -F 'https://archive.org/wayback/available' "$source_file"
@@ -55,18 +64,24 @@ jobs:
           grep -F 'https://web.archive.org' "$source_file"
           grep -F '"automatic_save_page_now": false' "$policy_file"
           grep -F '"publish_restored_content": false' "$policy_file"
+          grep -F 'Non-HOLD manifests require explicit' "$validator_file"
 
           forbidden='(waybackrebuilder|waybackdownloader|waybackdownloads|shell[[:space:]]*=[[:space:]]*True|execute_script|selenium|playwright)'
-          if grep -nEi "$forbidden" "$source_file" "$policy_file"; then
+          if grep -nEi "$forbidden" "$source_file" "$validator_file" "$policy_file"; then
             echo "Archive boundary widened to an untrusted or executable path." >&2
             exit 1
           fi
 
-      - name: Validate source policy JSON
-        run: python -m json.tool config/wayback-source-policy.json >/dev/null
+      - name: Validate policy and manifest schema JSON
+        run: |
+          python -m json.tool config/wayback-source-policy.json >/dev/null
+          python -m json.tool schemas/sentinel.wayback.evidence.v1.json >/dev/null
+
+      - name: Compile
+        run: python -m compileall -q src tests
 
       - name: Lint
         run: ruff check src tests
 
       - name: Test Wayback evidence layer
-        run: pytest -q tests/test_wayback.py
+        run: pytest -q tests/test_wayback.py tests/test_wayback_manifest.py
