@@ -1,383 +1,64 @@
 """Fail-closed Memento TimeMap discovery adapter for SENTINEL Phase 3.
 
 The adapter is disabled by default, performs discovery only, never fetches
-Memento content, and never elevates evidence status. Every discovered Memento
-retains its actual archive host as source provenance.
+Memento content, and never elevates evidence status. Candidate archive hosts
+are retained as declared provenance and remain unverified until acquisition.
 """
 
 from __future__ import annotations
 
-import re
+import hashlib
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from email.utils import parsedate_to_datetime
-from typing import Any, Callable, Mapping
-from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlparse, urlunparse
+from typing import Mapping
+from urllib.error import HTTPError
+from urllib.parse import quote, urlparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
-from sentinel_core.wayback import WaybackConfigurationError, normalize_target_url
+from sentinel_core.memento_model import (
+    DEFAULT_MEMENTO_USER_AGENT,
+    HOLD_STATUS,
+    MAX_TIMEMAP_BYTES,
+    MEMENTO_SOURCE_ORIGIN,
+    SEPARATE_POLICY_REQUIRED,
+    ArchiveHTTPResponse,
+    MementoAdapterError,
+    MementoConfigurationError,
+    MementoDiscoveryResult,
+    MementoRecord,
+    MementoRequestError,
+    MementoResponseError,
+    ParsedTimeMap,
+    Sleeper,
+    Transport,
+    utc_now,
+)
+from sentinel_core.memento_parser import (
+    parse_timemap_document,
+    parse_timemap_link_format,
+)
+from sentinel_core.memento_validation import (
+    header_value,
+    public_dns_host,
+    timemap_base_url,
+)
+from sentinel_core.wayback import normalize_target_url
 
-DEFAULT_MEMENTO_USER_AGENT = "SENTINEL-Memento-Discovery/0.1 (contact-required)"
-MEMENTO_SOURCE_ORIGIN = "memento-protocol-discovery"
-SEPARATE_POLICY_REQUIRED = "separate_policy_required"
-HOLD_STATUS = "HOLD"
-
-_MAX_TIMEMAP_BYTES = 8 * 1024 * 1024
-_PARAM_NAME_RE = re.compile(r"^[A-Za-z0-9!#$%&'*+.^_`|~-]+$")
-
-Sleeper = Callable[[float], None]
-
-
-class MementoAdapterError(RuntimeError):
-    """Base exception for the Phase 3 Memento boundary."""
-
-
-class MementoConfigurationError(MementoAdapterError):
-    """Raised when adapter configuration escapes its reviewed boundary."""
-
-
-class MementoRequestError(MementoAdapterError):
-    """Raised when a TimeMap request fails safely."""
-
-
-class MementoResponseError(MementoAdapterError):
-    """Raised when a TimeMap response is malformed or unsafe."""
-
-
-@dataclass(frozen=True)
-class ArchiveHTTPResponse:
-    """Bounded transport response used by injected and default transports."""
-
-    status_code: int
-    headers: Mapping[str, str]
-    body: bytes
-
-
-Transport = Callable[[str, Mapping[str, str], float, int], ArchiveHTTPResponse]
-
-
-def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _header(headers: Mapping[str, str], name: str) -> str | None:
-    wanted = name.lower()
-    for key, value in headers.items():
-        if key.lower() == wanted:
-            return value
-    return None
-
-
-def _public_host(value: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise MementoConfigurationError("archive host must be a non-empty string")
-    candidate = value.strip()
-    if any(char in candidate for char in "/?#@"):
-        raise MementoConfigurationError("archive host must be a hostname only")
-    try:
-        normalized = normalize_target_url(f"https://{candidate}/")
-    except WaybackConfigurationError as exc:
-        raise MementoConfigurationError(str(exc)) from None
-    parsed = urlparse(normalized)
-    if parsed.port is not None or parsed.hostname is None:
-        raise MementoConfigurationError("archive host must not contain a port")
-    return parsed.hostname
-
-
-def _timemap_base_url(value: str) -> str:
-    if not isinstance(value, str) or not value.strip():
-        raise MementoConfigurationError("timemap_base_url must be a non-empty string")
-    try:
-        parsed = urlparse(value.strip())
-        port = parsed.port
-    except ValueError:
-        raise MementoConfigurationError("timemap_base_url is invalid") from None
-    if (
-        parsed.scheme.lower() != "https"
-        or parsed.hostname is None
-        or parsed.username is not None
-        or parsed.password is not None
-        or port is not None
-        or parsed.query
-        or parsed.fragment
-    ):
-        raise MementoConfigurationError(
-            "timemap_base_url must be an exact credential-free HTTPS base URL"
-        )
-    try:
-        normalized = normalize_target_url(value.strip())
-    except WaybackConfigurationError as exc:
-        raise MementoConfigurationError(str(exc)) from None
-    stable = urlparse(normalized)
-    path = stable.path if stable.path.endswith("/") else stable.path + "/"
-    return urlunparse(("https", stable.netloc, path, "", "", ""))
-
-
-def _normalize_discovered_url(value: str, field_name: str) -> str:
-    try:
-        normalized = normalize_target_url(value)
-    except WaybackConfigurationError as exc:
-        raise MementoResponseError(f"{field_name} is not a public HTTP(S) URL") from exc
-    parsed = urlparse(normalized)
-    if parsed.port is not None:
-        raise MementoResponseError(f"{field_name} must not contain a port")
-    return normalized
-
-
-def _parse_rfc1123_datetime(value: str) -> str:
-    try:
-        parsed = parsedate_to_datetime(value)
-    except (TypeError, ValueError, OverflowError):
-        raise MementoResponseError("memento datetime is invalid") from None
-    if parsed.tzinfo is None:
-        raise MementoResponseError("memento datetime must include a timezone")
-    return parsed.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _split_top_level(value: str, delimiter: str) -> list[str]:
-    parts: list[str] = []
-    current: list[str] = []
-    in_quote = False
-    escaped = False
-    in_angle = False
-
-    for char in value:
-        if escaped:
-            current.append(char)
-            escaped = False
-            continue
-        if in_quote and char == "\\":
-            current.append(char)
-            escaped = True
-            continue
-        if char == '"' and not in_angle:
-            in_quote = not in_quote
-            current.append(char)
-            continue
-        if char == "<" and not in_quote:
-            if in_angle:
-                raise MementoResponseError("nested angle bracket in TimeMap")
-            in_angle = True
-            current.append(char)
-            continue
-        if char == ">" and not in_quote:
-            if not in_angle:
-                raise MementoResponseError("unmatched angle bracket in TimeMap")
-            in_angle = False
-            current.append(char)
-            continue
-        if char == delimiter and not in_quote and not in_angle:
-            item = "".join(current).strip()
-            if not item:
-                raise MementoResponseError("empty link-value in TimeMap")
-            parts.append(item)
-            current = []
-            continue
-        current.append(char)
-
-    if escaped or in_quote or in_angle:
-        raise MementoResponseError("unterminated quoted or URI value in TimeMap")
-    item = "".join(current).strip()
-    if item:
-        parts.append(item)
-    elif parts:
-        raise MementoResponseError("trailing delimiter in TimeMap")
-    return parts
-
-
-def _quoted_or_token(value: str) -> str:
-    raw = value.strip()
-    if not raw:
-        raise MementoResponseError("empty TimeMap parameter value")
-    if not raw.startswith('"'):
-        if any(ord(char) < 0x20 or ord(char) == 0x7F for char in raw):
-            raise MementoResponseError("control character in TimeMap parameter")
-        return raw
-    if len(raw) < 2 or not raw.endswith('"'):
-        raise MementoResponseError("unterminated TimeMap quoted value")
-    result: list[str] = []
-    escaped = False
-    for char in raw[1:-1]:
-        if escaped:
-            result.append(char)
-            escaped = False
-        elif char == "\\":
-            escaped = True
-        elif char == '"':
-            raise MementoResponseError("unescaped quote in TimeMap parameter")
-        else:
-            result.append(char)
-    if escaped:
-        raise MementoResponseError("dangling escape in TimeMap parameter")
-    return "".join(result)
-
-
-def _parse_link_value(value: str) -> tuple[str, dict[str, str]]:
-    stripped = value.strip()
-    if not stripped.startswith("<"):
-        raise MementoResponseError("TimeMap link-value must begin with '<'")
-    end = stripped.find(">")
-    if end <= 1:
-        raise MementoResponseError("TimeMap link target is missing")
-    target = stripped[1:end]
-    if any(ord(char) < 0x20 or ord(char) == 0x7F for char in target):
-        raise MementoResponseError("control character in TimeMap link target")
-    remainder = stripped[end + 1 :].strip()
-    params: dict[str, str] = {}
-    if remainder:
-        if not remainder.startswith(";"):
-            raise MementoResponseError("unexpected content after TimeMap link target")
-        for raw_param in _split_top_level(remainder[1:], ";"):
-            if "=" in raw_param:
-                raw_name, raw_value = raw_param.split("=", 1)
-                name = raw_name.strip().lower()
-                parsed_value = _quoted_or_token(raw_value)
-            else:
-                name = raw_param.strip().lower()
-                parsed_value = ""
-            if _PARAM_NAME_RE.fullmatch(name) is None:
-                raise MementoResponseError("invalid TimeMap parameter name")
-            if name in params:
-                raise MementoResponseError("duplicate TimeMap parameter")
-            params[name] = parsed_value
-    return target, params
-
-
-@dataclass(frozen=True)
-class MementoRecord:
-    """One discovered Memento with source-archive provenance."""
-
-    original_url: str
-    memento_url: str
-    memento_datetime: str
-    memento_datetime_raw: str
-    source_archive: str
-    relations: tuple[str, ...]
-    source_origin: str = MEMENTO_SOURCE_ORIGIN
-    acquisition_authority: str = SEPARATE_POLICY_REQUIRED
-    artifact_acquired: bool = False
-    status: str = HOLD_STATUS
-
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            "source_origin": self.source_origin,
-            "source_archive": self.source_archive,
-            "original_url": self.original_url,
-            "memento_url": self.memento_url,
-            "memento_datetime": self.memento_datetime,
-            "memento_datetime_raw": self.memento_datetime_raw,
-            "relations": list(self.relations),
-            "acquisition_authority": self.acquisition_authority,
-            "artifact_acquired": self.artifact_acquired,
-            "status": self.status,
-        }
-
-
-@dataclass(frozen=True)
-class MementoDiscoveryResult:
-    """Fail-closed metadata result; errors are never represented as absence."""
-
-    source_id: str
-    source_origin: str
-    policy_version: str
-    original_url: str
-    timemap_url: str | None
-    retrieved_at: str
-    result_class: str
-    mementos: tuple[MementoRecord, ...] = ()
-    acquisition_authority: str = SEPARATE_POLICY_REQUIRED
-    status: str = HOLD_STATUS
-    error_code: str | None = None
-    error_msg: str | None = None
-
-    def as_dict(self) -> dict[str, Any]:
-        return {
-            "source_id": self.source_id,
-            "source_origin": self.source_origin,
-            "policy_version": self.policy_version,
-            "original_url": self.original_url,
-            "timemap_url": self.timemap_url,
-            "retrieved_at": self.retrieved_at,
-            "result_class": self.result_class,
-            "mementos": [record.as_dict() for record in self.mementos],
-            "acquisition_authority": self.acquisition_authority,
-            "status": self.status,
-            "error_code": self.error_code,
-            "error_msg": self.error_msg,
-        }
-
-
-def parse_timemap_link_format(
-    payload: bytes,
-    *,
-    expected_original_url: str,
-    allowed_archive_hosts: tuple[str, ...],
-    max_mementos: int = 1000,
-) -> tuple[MementoRecord, ...]:
-    """Parse RFC 7089 link-format without following links or acquiring bytes."""
-
-    if not isinstance(payload, bytes):
-        raise TypeError("TimeMap payload must be bytes")
-    if isinstance(max_mementos, bool) or not 1 <= max_mementos <= 10_000:
-        raise MementoConfigurationError("max_mementos must be between 1 and 10000")
-    try:
-        text = payload.decode("utf-8")
-    except UnicodeDecodeError:
-        raise MementoResponseError("TimeMap is not valid UTF-8") from None
-
-    expected = normalize_target_url(expected_original_url)
-    allowed = frozenset(_public_host(host) for host in allowed_archive_hosts)
-    if not allowed:
-        raise MementoConfigurationError("at least one allowed archive host is required")
-
-    links = [_parse_link_value(item) for item in _split_top_level(text, ",")]
-    originals: list[str] = []
-    records: list[MementoRecord] = []
-    seen: dict[str, str] = {}
-
-    for target, params in links:
-        relations = tuple(sorted(set(params.get("rel", "").lower().split())))
-        if "original" in relations:
-            originals.append(_normalize_discovered_url(target, "original link"))
-        if "memento" not in relations:
-            continue
-        raw_datetime = params.get("datetime")
-        if raw_datetime is None:
-            raise MementoResponseError("memento link is missing datetime")
-        memento_url = _normalize_discovered_url(target, "memento link")
-        host = urlparse(memento_url).hostname
-        if host is None or host not in allowed:
-            raise MementoResponseError("memento link points to an unapproved source archive")
-        normalized_datetime = _parse_rfc1123_datetime(raw_datetime)
-        previous = seen.get(memento_url)
-        if previous is not None:
-            if previous != normalized_datetime:
-                raise MementoResponseError("one Memento URL has conflicting datetimes")
-            continue
-        seen[memento_url] = normalized_datetime
-        records.append(
-            MementoRecord(
-                original_url=expected,
-                memento_url=memento_url,
-                memento_datetime=normalized_datetime,
-                memento_datetime_raw=raw_datetime,
-                source_archive=host,
-                relations=relations,
-            )
-        )
-        if len(records) > max_mementos:
-            raise MementoResponseError("TimeMap contains too many Mementos")
-
-    if len(originals) != 1:
-        raise MementoResponseError("TimeMap must identify exactly one original resource")
-    if originals[0] != expected:
-        raise MementoResponseError("TimeMap original resource does not match the requested URL")
-
-    records.sort(key=lambda record: (record.memento_datetime, record.memento_url))
-    return tuple(records)
+__all__ = [
+    "ArchiveHTTPResponse",
+    "BaseArchiveAdapter",
+    "MementoAdapter",
+    "MementoAdapterError",
+    "MementoConfigurationError",
+    "MementoDiscoveryResult",
+    "MementoRecord",
+    "MementoRequestError",
+    "MementoResponseError",
+    "ParsedTimeMap",
+    "parse_timemap_document",
+    "parse_timemap_link_format",
+]
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):
@@ -407,11 +88,8 @@ def _default_transport(
             response_headers = dict(response.headers.items())
     except HTTPError as exc:
         if exc.code == 404:
-            return ArchiveHTTPResponse(
-                404,
-                dict(exc.headers.items()) if exc.headers else {},
-                b"",
-            )
+            headers_out = dict(exc.headers.items()) if exc.headers else {}
+            return ArchiveHTTPResponse(404, headers_out, b"")
         raise
     if len(body) > max_bytes:
         raise MementoResponseError("TimeMap response exceeded size limit")
@@ -425,7 +103,7 @@ class BaseArchiveAdapter(ABC):
     user_agent: str = DEFAULT_MEMENTO_USER_AGENT
     timeout_seconds: float = 20.0
     max_attempts: int = 3
-    max_response_bytes: int = _MAX_TIMEMAP_BYTES
+    max_response_bytes: int = MAX_TIMEMAP_BYTES
     enabled: bool = False
     transport: Transport = field(default=_default_transport, repr=False, compare=False)
     sleeper: Sleeper = field(default=time.sleep, repr=False, compare=False)
@@ -434,19 +112,22 @@ class BaseArchiveAdapter(ABC):
         if not isinstance(self.user_agent, str) or not self.user_agent.strip():
             raise MementoConfigurationError("user_agent must identify the automated client")
         if self.user_agent == DEFAULT_MEMENTO_USER_AGENT:
+            raise MementoConfigurationError("user_agent must include a reviewed contact identity")
+        if self.enabled and self.transport is _default_transport:
             raise MementoConfigurationError(
-                "user_agent must include a reviewed contact identity"
+                "enabled adapters require a separately reviewed network transport"
             )
         if not 0 < self.timeout_seconds <= 120:
             raise MementoConfigurationError("timeout_seconds must be between 0 and 120")
         if isinstance(self.max_attempts, bool) or not 1 <= self.max_attempts <= 5:
             raise MementoConfigurationError("max_attempts must be between 1 and 5")
-        if (
+        invalid_size = (
             isinstance(self.max_response_bytes, bool)
-            or not 1 <= self.max_response_bytes <= _MAX_TIMEMAP_BYTES
-        ):
+            or not 1 <= self.max_response_bytes <= MAX_TIMEMAP_BYTES
+        )
+        if invalid_size:
             raise MementoConfigurationError(
-                f"max_response_bytes must be between 1 and {_MAX_TIMEMAP_BYTES}"
+                f"max_response_bytes must be between 1 and {MAX_TIMEMAP_BYTES}"
             )
 
     @abstractmethod
@@ -472,9 +153,9 @@ class MementoAdapter(BaseArchiveAdapter):
             raise MementoConfigurationError("source_id must be a non-empty string")
         if isinstance(self.max_mementos, bool) or not 1 <= self.max_mementos <= 10_000:
             raise MementoConfigurationError("max_mementos must be between 1 and 10000")
-        normalized_base = _timemap_base_url(self.timemap_base_url)
+        normalized_base = timemap_base_url(self.timemap_base_url)
         normalized_hosts = tuple(
-            sorted({_public_host(host) for host in self.allowed_archive_hosts})
+            sorted({public_dns_host(host) for host in self.allowed_archive_hosts})
         )
         if not normalized_hosts:
             raise MementoConfigurationError("allowed_archive_hosts must not be empty")
@@ -486,16 +167,17 @@ class MementoAdapter(BaseArchiveAdapter):
         request_url = self.timemap_base_url + quote(normalized, safe="")
         base = urlparse(self.timemap_base_url)
         parsed = urlparse(request_url)
-        if (
+        escaped = (
             parsed.scheme != "https"
             or parsed.hostname != base.hostname
             or parsed.port is not None
             or parsed.username is not None
             or parsed.password is not None
-            or parsed.query
-            or parsed.fragment
+            or bool(parsed.query)
+            or bool(parsed.fragment)
             or not parsed.path.startswith(base.path)
-        ):
+        )
+        if escaped:
             raise MementoConfigurationError(
                 "constructed TimeMap URL escaped the configured endpoint"
             )
@@ -510,15 +192,9 @@ class MementoAdapter(BaseArchiveAdapter):
         for attempt in range(1, self.max_attempts + 1):
             try:
                 response = self.transport(
-                    url,
-                    headers,
-                    self.timeout_seconds,
-                    self.max_response_bytes,
+                    url, headers, self.timeout_seconds, self.max_response_bytes
                 )
-                if not isinstance(response, ArchiveHTTPResponse):
-                    raise MementoResponseError(
-                        "transport returned an invalid response object"
-                    )
+                self._validate_transport_response(response)
                 if response.status_code == 404:
                     return response
                 if response.status_code == 429 or 500 <= response.status_code <= 599:
@@ -526,7 +202,7 @@ class MementoAdapter(BaseArchiveAdapter):
                         raise MementoRequestError(
                             f"TimeMap request failed with HTTP {response.status_code}"
                         )
-                    retry_after = _header(response.headers, "Retry-After")
+                    retry_after = header_value(response.headers, "Retry-After")
                     try:
                         delay = (
                             min(float(retry_after), 30.0)
@@ -558,11 +234,28 @@ class MementoAdapter(BaseArchiveAdapter):
                 except ValueError:
                     delay = 2 ** (attempt - 1)
                 self.sleeper(float(delay))
-            except URLError:
+            except OSError:
                 if attempt == self.max_attempts:
                     raise MementoRequestError("TimeMap request failed") from None
                 self.sleeper(float(2 ** (attempt - 1)))
         raise MementoRequestError("TimeMap request failed")
+
+    def _validate_transport_response(self, response: ArchiveHTTPResponse) -> None:
+        if not isinstance(response, ArchiveHTTPResponse):
+            raise MementoResponseError("transport returned an invalid response object")
+        invalid_status = (
+            isinstance(response.status_code, bool)
+            or not isinstance(response.status_code, int)
+            or not 100 <= response.status_code <= 599
+        )
+        if invalid_status:
+            raise MementoResponseError("transport returned an invalid HTTP status")
+        if not isinstance(response.headers, Mapping):
+            raise MementoResponseError("transport returned invalid HTTP headers")
+        if not isinstance(response.body, bytes):
+            raise MementoResponseError("transport returned a non-bytes body")
+        if len(response.body) > self.max_response_bytes:
+            raise MementoResponseError("TimeMap response exceeded size limit")
 
     def _result(
         self,
@@ -571,18 +264,33 @@ class MementoAdapter(BaseArchiveAdapter):
         timemap_url: str | None,
         result_class: str,
         mementos: tuple[MementoRecord, ...] = (),
+        linked_timemaps: tuple[str, ...] = (),
+        response: ArchiveHTTPResponse | None = None,
         error_code: str | None = None,
         error_msg: str | None = None,
     ) -> MementoDiscoveryResult:
+        body = response.body if response is not None else None
+        content_type = (
+            header_value(response.headers, "Content-Type")
+            if response is not None
+            else None
+        )
         return MementoDiscoveryResult(
             source_id=self.source_id,
             source_origin=MEMENTO_SOURCE_ORIGIN,
             policy_version=self.policy_version,
             original_url=original_url,
             timemap_url=timemap_url,
-            retrieved_at=_utc_now(),
+            retrieved_at=utc_now(),
             result_class=result_class,
             mementos=mementos,
+            linked_timemaps=linked_timemaps,
+            timemap_sha256=(
+                "sha256:" + hashlib.sha256(body).hexdigest() if body is not None else None
+            ),
+            timemap_byte_length=len(body) if body is not None else None,
+            http_status=response.status_code if response is not None else None,
+            content_type=content_type,
             error_code=error_code,
             error_msg=error_msg,
         )
@@ -599,6 +307,7 @@ class MementoAdapter(BaseArchiveAdapter):
             )
 
         timemap_url = self.build_timemap_url(normalized)
+        response: ArchiveHTTPResponse | None = None
         try:
             response = self._request(timemap_url)
             if response.status_code == 404:
@@ -606,13 +315,14 @@ class MementoAdapter(BaseArchiveAdapter):
                     original_url=normalized,
                     timemap_url=timemap_url,
                     result_class="NOT_FOUND",
+                    response=response,
                 )
-            content_type = (_header(response.headers, "Content-Type") or "").lower()
+            content_type = (header_value(response.headers, "Content-Type") or "").lower()
             if content_type.split(";", 1)[0].strip() != "application/link-format":
                 raise MementoResponseError(
                     "TimeMap response has an unexpected content type"
                 )
-            mementos = parse_timemap_link_format(
+            document = parse_timemap_document(
                 response.body,
                 expected_original_url=normalized,
                 allowed_archive_hosts=self.allowed_archive_hosts,
@@ -623,13 +333,20 @@ class MementoAdapter(BaseArchiveAdapter):
                 original_url=normalized,
                 timemap_url=timemap_url,
                 result_class="QUERY_FAILED",
+                response=response,
                 error_code=type(exc).__name__.upper(),
                 error_msg=str(exc),
             )
 
+        if document.linked_timemaps:
+            result_class = "PARTIAL" if document.mementos else "PAGINATION_REQUIRED"
+        else:
+            result_class = "SUCCESS" if document.mementos else "NOT_FOUND"
         return self._result(
             original_url=normalized,
             timemap_url=timemap_url,
-            result_class="SUCCESS" if mementos else "NOT_FOUND",
-            mementos=mementos,
+            result_class=result_class,
+            mementos=document.mementos,
+            linked_timemaps=document.linked_timemaps,
+            response=response,
         )
