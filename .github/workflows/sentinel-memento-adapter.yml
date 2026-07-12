@@ -11,6 +11,7 @@ on:
       - "src/sentinel_core/memento_parser.py"
       - "src/sentinel_core/memento_validation.py"
       - "tests/test_memento.py"
+      - "tests/test_memento_retry.py"
       - "config/memento-source-policy.json"
       - "docs/memento-adapter-boundary.md"
       - "docs/phase3-multi-source-historical-evidence-spec.md"
@@ -24,6 +25,7 @@ on:
       - "src/sentinel_core/memento_parser.py"
       - "src/sentinel_core/memento_validation.py"
       - "tests/test_memento.py"
+      - "tests/test_memento_retry.py"
       - "config/memento-source-policy.json"
       - "docs/memento-adapter-boundary.md"
       - "docs/phase3-multi-source-historical-evidence-spec.md"
@@ -67,6 +69,7 @@ jobs:
           grep -F 'Memento redirects are disabled' "$source_file"
           grep -F 'enabled adapters require a separately reviewed network transport' "$source_file"
           grep -F 'result_class = "PARTIAL" if document.mementos else "PAGINATION_REQUIRED"' "$source_file"
+          grep -F 'not math.isfinite(parsed) or parsed < 0' "$source_file"
           grep -F 'artifact_acquired: bool = False' "$model_file"
           grep -F 'source_archive_verified: bool = False' "$model_file"
           grep -F 'SEPARATE_POLICY_REQUIRED = "separate_policy_required"' "$model_file"
@@ -103,7 +106,8 @@ jobs:
             src/sentinel_core/memento_model.py \
             src/sentinel_core/memento_parser.py \
             src/sentinel_core/memento_validation.py \
-            tests/test_memento.py
+            tests/test_memento.py \
+            tests/test_memento_retry.py
 
       - name: Test Memento adapter
-        run: pytest -q tests/test_memento.py
+        run: pytest -q tests/test_memento.py tests/test_memento_retry.py
