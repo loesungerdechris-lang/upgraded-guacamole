@@ -73,8 +73,10 @@ jobs:
           grep -F 'Non-canonical evidence bundle path' "$module"
           grep -F 'already-bound filesystem object' "$module"
           grep -F 'Stable filesystem object identity is unavailable; BYTES is blocked' "$module"
+          grep -F 'if ":" in value' "$module"
+          grep -F '(?!.*:)' "$schema"
           grep -F '(?!.*//)' "$schema"
-          grep -F '(?!.*[\\u0000-\\u001F\\u007F])' "$schema"
+          grep -F '(?!.*[\u0000-\u001F\u007F])' "$schema"
 
           forbidden='(^|[[:space:]])(requests|httpx|aiohttp|socket|subprocess)[[:space:].]'
           forbidden+='|private_key|generate_private_key|sign\('
