@@ -1,3 +1,4 @@
+import runpy
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -61,6 +62,19 @@ def test_safe_path_schema_accepts_exact_posix_relative_path():
     validator = Draft202012Validator(safe_path_schema)
     assert not list(validator.iter_errors("raw/alpha.html"))
     assert evidence_artifact._validate_safe_path("raw/alpha.html") == "raw/alpha.html"
+
+
+def test_duplicate_descriptor_path_is_rejected_for_bindings():
+    helpers = runpy.run_path(str(Path(__file__).with_name("test_evidence_artifact.py")))
+    value = helpers["make_artifact"]()
+    value["members"][1]["path"] = "raw/alpha.html"
+    helpers["rebind_members"](value)
+
+    result = evidence_artifact.verify_evidence_artifact(value)
+
+    assert result.integrity_valid is False
+    assert result.level == "NONE"
+    assert "Duplicate evidence bundle descriptor path" in result.issues[0].message
 
 
 @pytest.mark.parametrize(
