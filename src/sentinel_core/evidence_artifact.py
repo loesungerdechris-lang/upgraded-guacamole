@@ -10,12 +10,13 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
-from typing import Any, Literal, Mapping, Sequence
+from typing import Any, BinaryIO, Literal, Mapping, Sequence
 
 from jsonschema import Draft202012Validator, FormatChecker
 
@@ -26,6 +27,7 @@ _SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _UTC_TIMESTAMP_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$"
 )
+_CONTROL_CHARACTER_RE = re.compile(r"[\x00-\x1f\x7f]")
 _SAFE_INTEGER = 2**53 - 1
 _MAX_JSON_BYTES = 16 * 1024 * 1024
 
@@ -344,11 +346,25 @@ def _require_sorted_hashes(values: Sequence[str], label: str) -> None:
 
 
 def _validate_safe_path(value: str) -> str:
-    if not isinstance(value, str) or not value or "\\" in value:
+    """Validate an exact, portable POSIX-relative bundle path.
+
+    The verifier never repairs or normalizes descriptor paths. Any alternate
+    spelling that would normalize to another path is rejected before hashing or
+    filesystem access.
+    """
+
+    if not isinstance(value, str) or not value:
         _fail("Unsafe evidence bundle path")
-    path = PurePosixPath(value)
-    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
+    if "\\" in value or _CONTROL_CHARACTER_RE.search(value):
         _fail("Unsafe evidence bundle path")
+    if value.startswith("/") or value.endswith("/"):
+        _fail("Non-canonical evidence bundle path")
+    segments = value.split("/")
+    if any(segment in {"", ".", ".."} for segment in segments):
+        _fail("Non-canonical evidence bundle path")
+    canonical = "/".join(segments)
+    if canonical != value or PurePosixPath(value).as_posix() != value:
+        _fail("Non-canonical evidence bundle path")
     return value
 
 
@@ -418,21 +434,30 @@ def _validate_lifecycle(
     return previous_hash
 
 
-def _file_sha256(path: Path) -> str:
+def _stream_sha256(handle: BinaryIO) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
+    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        digest.update(chunk)
     return "sha256:" + digest.hexdigest()
 
 
 def _reject_symlink_components(root: Path, relative: str, index: int) -> Path:
     current = root
-    for part in PurePosixPath(relative).parts:
+    for part in relative.split("/"):
         current = current / part
         if current.is_symlink():
             _fail(f"Member {index} path contains a symbolic-link component")
     return current
+
+
+def _filesystem_identity(path: Path, stat_result: os.stat_result) -> tuple[Any, ...]:
+    """Return a fail-closed identity key for resolved object aliases."""
+
+    inode = int(getattr(stat_result, "st_ino", 0))
+    device = int(getattr(stat_result, "st_dev", 0))
+    if inode:
+        return ("inode", device, inode)
+    return ("resolved", os.path.normcase(str(path)))
 
 
 def _verify_bundle(
@@ -448,6 +473,7 @@ def _verify_bundle(
         _fail(f"Evidence bundle root is unavailable: {exc}")
     if not root.is_dir():
         _fail("Evidence bundle root must be a directory")
+
     for index, member in enumerate(members):
         if member["path"] is None:
             _fail(
@@ -455,12 +481,16 @@ def _verify_bundle(
                 "requires every member to be path-bound"
             )
 
-    seen_paths: set[str] = set()
+    seen_descriptor_paths: set[str] = set()
+    seen_resolved_paths: set[str] = set()
+    seen_identities: set[tuple[Any, ...]] = set()
+
     for index, member in enumerate(members):
         relative = _validate_safe_path(member["path"])
-        if relative in seen_paths:
-            _fail(f"Duplicate evidence bundle path: {relative}")
-        seen_paths.add(relative)
+        if relative in seen_descriptor_paths:
+            _fail(f"Duplicate evidence bundle descriptor path: {relative}")
+        seen_descriptor_paths.add(relative)
+
         candidate = _reject_symlink_components(root, relative, index)
         try:
             resolved = candidate.resolve(strict=True)
@@ -469,10 +499,29 @@ def _verify_bundle(
             _fail(f"Member {index} is missing or escapes the bundle root")
         if not resolved.is_file():
             _fail(f"Member {index} is not a regular file")
-        if resolved.stat().st_size != member["byte_length"]:
-            _fail(f"Member {index} byte length mismatch")
-        if _file_sha256(resolved) != member["sha256"]:
-            _fail(f"Member {index} payload hash mismatch")
+
+        normalized_resolved = os.path.normcase(str(resolved))
+        if normalized_resolved in seen_resolved_paths:
+            _fail(f"Member {index} resolves to an already-bound filesystem path")
+        seen_resolved_paths.add(normalized_resolved)
+
+        try:
+            with resolved.open("rb") as handle:
+                stat_result = os.fstat(handle.fileno())
+                identity = _filesystem_identity(resolved, stat_result)
+                if identity in seen_identities:
+                    _fail(
+                        f"Member {index} resolves to an already-bound filesystem object"
+                    )
+                seen_identities.add(identity)
+                if stat_result.st_size != member["byte_length"]:
+                    _fail(f"Member {index} byte length mismatch")
+                if _stream_sha256(handle) != member["sha256"]:
+                    _fail(f"Member {index} payload hash mismatch")
+        except EvidenceArtifactValidationError:
+            raise
+        except OSError as exc:
+            _fail(f"Member {index} could not be read safely: {exc}")
 
 
 def validate_evidence_artifact(
