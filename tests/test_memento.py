@@ -74,7 +74,7 @@ def test_adapter_is_disabled_by_default_and_never_calls_transport():
     assert calls == []
 
 
-def test_happy_path_preserves_actual_archive_provenance():
+def test_happy_path_preserves_declared_archive_provenance():
     body = timemap(
         memento_entry(),
         memento_entry(
@@ -112,9 +112,7 @@ def test_rfc1123_comma_inside_quoted_datetime_is_not_split():
 
 
 def test_original_resource_must_match_request():
-    body = (
-        '<https://other.example/page>; rel="original",\n' + memento_entry()
-    ).encode()
+    body = ('<https://other.example/page>; rel="original",\n' + memento_entry()).encode()
 
     result = adapter(enabled=True, transport=ok_transport(body)).discover(
         "https://example.com/page"
@@ -216,7 +214,7 @@ def test_malformed_datetime_is_rejected():
         "https://example.com/page"
     )
     assert result.result_class == "QUERY_FAILED"
-    assert "datetime is invalid" in result.error_msg
+    assert "RFC 1123 GMT" in result.error_msg
 
 
 def test_empty_valid_timemap_returns_not_found():
@@ -269,6 +267,98 @@ def test_duplicate_identical_record_is_deduplicated():
         allowed_archive_hosts=ALLOWED,
     )
     assert len(records) == 1
+
+
+def test_enabled_adapter_requires_separately_reviewed_transport():
+    with pytest.raises(MementoConfigurationError):
+        MementoAdapter(
+            timemap_base_url=BASE_URL,
+            allowed_archive_hosts=ALLOWED,
+            policy_version="v1",
+            enabled=True,
+            user_agent=USER_AGENT,
+        )
+
+
+def test_non_gmt_datetime_is_rejected():
+    body = timemap(memento_entry(datetime_value="Wed, 01 Jan 2020 12:00:00 +0000"))
+    result = adapter(enabled=True, transport=ok_transport(body)).discover(
+        "https://example.com/page"
+    )
+    assert result.result_class == "QUERY_FAILED"
+    assert "RFC 1123 GMT" in result.error_msg
+
+
+def test_injected_transport_cannot_bypass_response_size_limit():
+    def transport(*args):
+        return ArchiveHTTPResponse(
+            200,
+            {"Content-Type": "application/link-format"},
+            b"x" * 33,
+        )
+
+    instance = MementoAdapter(
+        timemap_base_url=BASE_URL,
+        allowed_archive_hosts=ALLOWED,
+        policy_version="v1",
+        enabled=True,
+        user_agent=USER_AGENT,
+        transport=transport,
+        max_response_bytes=32,
+    )
+    result = instance.discover("https://example.com/page")
+    assert result.result_class == "QUERY_FAILED"
+    assert "size limit" in result.error_msg
+
+
+def test_index_timemap_is_not_misreported_as_not_found():
+    body = (
+        '<https://example.com/page>; rel="original", '
+        '<https://aggregator.example.org/timemap/page/2>; rel="timemap"'
+    ).encode()
+    result = adapter(enabled=True, transport=ok_transport(body)).discover(
+        "https://example.com/page"
+    )
+    assert result.result_class == "PAGINATION_REQUIRED"
+    assert result.linked_timemaps == (
+        "https://aggregator.example.org/timemap/page/2",
+    )
+
+
+def test_paging_timemap_with_records_is_partial():
+    body = timemap(
+        memento_entry(),
+        '<https://aggregator.example.org/timemap/page/2>; rel="timemap"',
+    )
+    result = adapter(enabled=True, transport=ok_transport(body)).discover(
+        "https://example.com/page"
+    )
+    assert result.result_class == "PARTIAL"
+    assert len(result.mementos) == 1
+    assert len(result.linked_timemaps) == 1
+
+
+def test_anchor_must_bind_to_requested_original():
+    body = timemap(memento_entry() + '; anchor="https://other.example/page"')
+    result = adapter(enabled=True, transport=ok_transport(body)).discover(
+        "https://example.com/page"
+    )
+    assert result.result_class == "QUERY_FAILED"
+    assert "anchor does not match" in result.error_msg
+
+
+def test_timemap_response_integrity_metadata_is_recorded():
+    body = timemap(memento_entry())
+    result = adapter(enabled=True, transport=ok_transport(body)).discover(
+        "https://example.com/page"
+    )
+    assert result.timemap_sha256 is not None
+    assert result.timemap_sha256.startswith("sha256:")
+    assert result.timemap_byte_length == len(body)
+    assert result.http_status == 200
+    assert result.content_type == "application/link-format; charset=utf-8"
+    assert result.mementos[0].source_archive_verified is False
+    assert result.mementos[0].datetime_verified is False
 
 
 def test_result_serialization_retains_hold_and_source_archive():
