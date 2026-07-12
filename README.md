@@ -65,7 +65,7 @@ pytest -q
 
 The Wayback integration is read-only and fail-closed. It uses only the official Internet Archive Availability, CDX, and replay hosts. It can discover historical captures, retrieve selected archived bytes without executing them, build deterministic SHA-256 evidence manifests, and materialize a local offline reconstruction bundle.
 
-Automatic Save Page Now submissions, third-party rebuild services, archived JavaScript execution, and publication of restored content remain disabled. `HOLD` is the normal state. `VERIFIED` requires explicit internal review-aware validation. `PUBLISHED` remains blocked until a separately reviewed release-receipt verifier is implemented.
+Automatic Save Page Now submissions, third-party rebuild services, archived JavaScript execution, and publication of restored content remain disabled. `HOLD` is the normal state. `VERIFIED` requires explicit internal review-aware validation. `PUBLISHED` remains blocked until a separately reviewed release-receipt verifier is implemented under Issue #30.
 
 ```text
 src/sentinel_core/wayback.py
