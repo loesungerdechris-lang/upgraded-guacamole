@@ -82,6 +82,12 @@ semantics, SHA-256 digest, limitations, and trust classification. Merely recordi
 a Phase 3 cross-verification entry does not authorize network access to that source.
 The Wayback trust boundary must not be widened implicitly.
 
+The normative Phase 3 design is documented in:
+
+```text
+docs/phase3-multi-source-historical-evidence-spec.md
+```
+
 ## 4. Provenance and deterministic manifests
 
 Each bundle uses `sentinel.wayback.evidence.v1` or a reviewed successor. The
@@ -126,21 +132,41 @@ invalidate the hash.
 - SENTINEL release: HOLD
 - publication: false
 
-The default validator rejects non-HOLD manifests unless the caller explicitly
-selects release-aware validation.
+The default validator rejects VERIFIED unless the caller explicitly selects
+release-aware internal validation.
 
 ### PUBLISHED
 
-`PUBLISHED` is permitted only after a separate release workflow.
+`PUBLISHED` is reserved for a separate receipt-bound release workflow.
 
 - mode: `released`
 - rights, privacy, and provenance reviews: approved
 - SENTINEL release: approved
 - publication: true
-- a release-receipt SHA-256 is required
+- a verified release-receipt SHA-256 is required
 
 Changing a JSON field is not a release decision. The release receipt and its
 authorization chain must be verified independently.
+
+Draft PR #27 does not implement the publication verifier. Its Phase 1 validator
+rejects PUBLISHED even when non-HOLD internal validation is explicitly enabled.
+This prevents a structurally valid manifest from being mistaken for a release.
+
+The normative manual transition and non-circular receipt binding are documented in:
+
+```text
+docs/wayback-release-receipt-gate.md
+```
+
+The required directed chain is:
+
+```text
+VERIFIED manifest -> signed release receipt -> PUBLISHED envelope
+```
+
+The receipt binds the VERIFIED predecessor hash. The final PUBLISHED manifest then
+references the receipt hash and is hashed afterward. No receipt signs a final
+manifest hash that already contains that same receipt hash.
 
 ## 6. Local reconstruction rules
 
@@ -167,6 +193,8 @@ Implemented in Draft PR #27:
 - local-only reconstruction;
 - schema and semantic validation;
 - HOLD enforcement;
+- explicit internal VERIFIED validation;
+- PUBLISHED rejection until the separate receipt gate exists;
 - offline tests and dedicated CI;
 - no publication, active rendering, or Save Page Now automation.
 
@@ -189,7 +217,9 @@ Tracked in Issue #28:
 
 ### Phase 3: Multi-Source Historical Evidence Engine
 
-Phase 3 adds redundancy without weakening source separation.
+Tracked in Issue #29 and specified in the Phase 3 document.
+
+Phase 3 adds redundancy without weakening source separation:
 
 - primary: Internet Archive Wayback Machine;
 - secondary, independently governed sources: archive.today and Perma.cc;
@@ -205,8 +235,12 @@ source policy and tests before acquisition is enabled.
 
 ## 8. SENTINEL Receipt integration
 
-A later reviewed integration may bind the manifest hash, artifact hashes, policy
-version, reviewer decisions, and release state into SENTINEL Receipts.
+A reviewed integration may bind the VERIFIED manifest hash, artifact-set hash,
+policy version, manual review packet, source commit, pipeline evidence, release
+scope, and release destination into a Class A SENTINEL Receipt.
+
+The verifier remains verifier-only. Private signing material and signing operations
+remain outside this repository surface.
 
 Receipt linkage strengthens integrity and decision traceability; it does not by
 itself prove factual truth, copyright permission, privacy compliance, or legal
@@ -251,13 +285,14 @@ The core layer does not:
 - impersonate a current authority or website;
 - publish restored material automatically;
 - infer non-existence from archive gaps;
-- merge distinct archive sources into a single undocumented provenance chain.
+- merge distinct archive sources into a single undocumented provenance chain;
+- generate release signatures or hold private signing keys.
 
 ## 12. Change control
 
 Changes that widen trusted hosts, enable write operations, execute active content,
-allow live-resource fallback, relax HOLD, introduce publication, or automate
-recurring acquisition require a separate reviewed change, dedicated tests, and an
-explicit SENTINEL GO decision.
+allow live-resource fallback, relax HOLD, introduce publication, automate recurring
+acquisition, or implement the release verifier require a separate reviewed change,
+dedicated tests, and an explicit SENTINEL GO decision.
 
 Until then, the system fails closed.
