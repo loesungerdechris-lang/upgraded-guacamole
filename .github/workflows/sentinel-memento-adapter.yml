@@ -7,6 +7,9 @@ on:
       - agent/wayback-evidence-layer
     paths:
       - "src/sentinel_core/memento.py"
+      - "src/sentinel_core/memento_model.py"
+      - "src/sentinel_core/memento_parser.py"
+      - "src/sentinel_core/memento_validation.py"
       - "tests/test_memento.py"
       - "config/memento-source-policy.json"
       - "docs/memento-adapter-boundary.md"
@@ -17,6 +20,9 @@ on:
     branches: ["main"]
     paths:
       - "src/sentinel_core/memento.py"
+      - "src/sentinel_core/memento_model.py"
+      - "src/sentinel_core/memento_parser.py"
+      - "src/sentinel_core/memento_validation.py"
       - "tests/test_memento.py"
       - "config/memento-source-policy.json"
       - "docs/memento-adapter-boundary.md"
@@ -54,23 +60,32 @@ jobs:
         run: |
           set -euo pipefail
           source_file="src/sentinel_core/memento.py"
+          model_file="src/sentinel_core/memento_model.py"
           policy_file="config/memento-source-policy.json"
 
           grep -F 'enabled: bool = False' "$source_file"
           grep -F 'Memento redirects are disabled' "$source_file"
-          grep -F 'artifact_acquired: bool = False' "$source_file"
-          grep -F 'SEPARATE_POLICY_REQUIRED = "separate_policy_required"' "$source_file"
-          grep -F 'HOLD_STATUS = "HOLD"' "$source_file"
+          grep -F 'enabled adapters require a separately reviewed network transport' "$source_file"
+          grep -F 'result_class = "PARTIAL" if document.mementos else "PAGINATION_REQUIRED"' "$source_file"
+          grep -F 'artifact_acquired: bool = False' "$model_file"
+          grep -F 'source_archive_verified: bool = False' "$model_file"
+          grep -F 'SEPARATE_POLICY_REQUIRED = "separate_policy_required"' "$model_file"
+          grep -F 'HOLD_STATUS = "HOLD"' "$model_file"
           grep -F 'method="GET"' "$source_file"
 
           grep -F '"enabled": false' "$policy_file"
           grep -F '"follow_redirects": false' "$policy_file"
+          grep -F '"requires_reviewed_transport": true' "$policy_file"
           grep -F '"memento_content_acquisition": false' "$policy_file"
           grep -F '"automatic_status_elevation": false' "$policy_file"
           grep -F '"publication": false' "$policy_file"
 
           forbidden='(selenium|playwright|execute_script|requests[.]post|urlopen[[:space:]]*\(|shell[[:space:]]*=[[:space:]]*True)'
-          if grep -nEi "$forbidden" "$source_file"; then
+          if grep -nEi "$forbidden" \
+            src/sentinel_core/memento.py \
+            src/sentinel_core/memento_model.py \
+            src/sentinel_core/memento_parser.py \
+            src/sentinel_core/memento_validation.py; then
             echo "Memento adapter widened to an executable or side-effecting path." >&2
             exit 1
           fi
@@ -82,7 +97,13 @@ jobs:
         run: python -m compileall -q src tests
 
       - name: Lint focused files
-        run: ruff check src/sentinel_core/memento.py tests/test_memento.py
+        run: |
+          ruff check \
+            src/sentinel_core/memento.py \
+            src/sentinel_core/memento_model.py \
+            src/sentinel_core/memento_parser.py \
+            src/sentinel_core/memento_validation.py \
+            tests/test_memento.py
 
       - name: Test Memento adapter
         run: pytest -q tests/test_memento.py
