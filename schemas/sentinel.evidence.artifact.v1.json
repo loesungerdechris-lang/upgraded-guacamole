@@ -118,7 +118,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 1024,
-      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\).+$"
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.(?:/|$))(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*//)(?!.*\\\\)(?!.*[\\u0000-\\u001F\\u007F])(?!.*?/$).+$"
     },
     "provenance": {
       "type": "object",
@@ -252,15 +252,8 @@
         "retention_decision_hash"
       ],
       "properties": {
-        "policies": {
-          "type": "array",
-          "minItems": 1,
-          "items": {"$ref": "#/$defs/policyBinding"}
-        },
-        "registries": {
-          "type": "array",
-          "items": {"$ref": "#/$defs/registryBinding"}
-        },
+        "policies": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/policyBinding"}},
+        "registries": {"type": "array", "items": {"$ref": "#/$defs/registryBinding"}},
         "operation_plan_hash": {"$ref": "#/$defs/hash"},
         "source_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
         "parent_stack_hash": {"$ref": "#/$defs/hash"},
@@ -305,9 +298,7 @@
           "items": {"$ref": "#/$defs/hash"}
         },
         "description_hash": {"$ref": "#/$defs/hash"},
-        "resolution_status": {
-          "enum": ["OPEN_HOLD", "REVIEWED_HOLD", "RESOLVED_WITH_RECORD"]
-        },
+        "resolution_status": {"enum": ["OPEN_HOLD", "REVIEWED_HOLD", "RESOLVED_WITH_RECORD"]},
         "resolution_record_hash": {"$ref": "#/$defs/hashOrNull"},
         "conflict_hash": {"$ref": "#/$defs/hash"}
       }
@@ -353,21 +344,9 @@
         },
         "occurred_at": {"$ref": "#/$defs/utcTimestamp"},
         "actor": {"$ref": "#/$defs/actor"},
-        "input_hashes": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {"$ref": "#/$defs/hash"}
-        },
-        "output_hashes": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {"$ref": "#/$defs/hash"}
-        },
-        "policy_hashes": {
-          "type": "array",
-          "uniqueItems": true,
-          "items": {"$ref": "#/$defs/hash"}
-        },
+        "input_hashes": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/hash"}},
+        "output_hashes": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/hash"}},
+        "policy_hashes": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/hash"}},
         "decision": {"enum": ["HOLD", "BLOCKED"]},
         "previous_event_hash": {"$ref": "#/$defs/hash"},
         "event_hash": {"$ref": "#/$defs/hash"}
