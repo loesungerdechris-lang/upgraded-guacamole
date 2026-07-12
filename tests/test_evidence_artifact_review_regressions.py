@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -30,6 +31,17 @@ def test_filesystem_identity_unavailable_blocks_bytes():
         "C:/raw/a",
         "raw/C:foo",
         "raw/file.txt:stream",
+        "raw/file.",
+        "raw/file ",
+        "raw/CON",
+        "raw/con.txt",
+        "raw/PRN",
+        "raw/AUX.log",
+        "raw/NUL",
+        "raw/COM1",
+        "raw/com9.bin",
+        "raw/LPT1",
+        "raw/lpt9.txt",
     ],
 )
 def test_safe_path_schema_matches_semantic_rejection(bad_path: str):
@@ -108,6 +120,44 @@ def test_invalid_raw_utf8_is_rejected_at_io_boundary(tmp_path):
         match="Unable to load evidence artifact JSON",
     ):
         evidence_artifact.load_evidence_artifact_json(artifact_path)
+
+
+def test_json_size_limit_is_enforced_during_read(tmp_path):
+    artifact_path = tmp_path / "artifact.json"
+    artifact_path.write_bytes(b'{"value":"0123456789"}')
+
+    with pytest.raises(
+        evidence_artifact.EvidenceArtifactValidationError,
+        match="Evidence artifact JSON exceeds size limit",
+    ):
+        evidence_artifact.load_evidence_artifact_json(artifact_path, max_bytes=8)
+
+
+@pytest.mark.parametrize("invalid_limit", [0, -1, True])
+def test_json_size_limit_must_be_positive_integer(tmp_path, invalid_limit):
+    artifact_path = tmp_path / "artifact.json"
+    artifact_path.write_bytes(b"{}")
+
+    with pytest.raises(
+        evidence_artifact.EvidenceArtifactValidationError,
+        match="size limit must be a positive integer",
+    ):
+        evidence_artifact.load_evidence_artifact_json(
+            artifact_path,
+            max_bytes=invalid_limit,
+        )
+
+
+def test_json_loader_rejects_non_regular_input():
+    device = Path("/dev/null")
+    if not device.exists():
+        pytest.skip("No safe non-regular test input is available")
+
+    with pytest.raises(
+        evidence_artifact.EvidenceArtifactValidationError,
+        match="Evidence artifact JSON input must be a regular file",
+    ):
+        evidence_artifact.load_evidence_artifact_json(device)
 
 
 def test_valid_supplementary_unicode_scalar_is_canonicalizable():
