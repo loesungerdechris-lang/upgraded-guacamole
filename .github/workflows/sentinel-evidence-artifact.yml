@@ -52,38 +52,66 @@ jobs:
       - name: Guard verifier-only HOLD boundary
         shell: bash
         run: |
-          set -euo pipefail
+          set -uo pipefail
           spec="docs/sentinel-evidence-artifact-spec.md"
           path_spec="docs/sentinel-evidence-artifact-path-rules.md"
           schema="schemas/sentinel.evidence.artifact.v1.json"
           module="src/sentinel_core/evidence_artifact.py"
+          report="evidence-artifact-guard-diagnostic.txt"
+          : > "$report"
+          failed=0
 
-          grep -F '**Status:** DRAFT / HOLD' "$spec"
-          grep -F '**Activation authority:** none' "$spec"
-          grep -F '**Signing authority:** none' "$spec"
-          grep -F '**Publication authority:** none' "$spec"
-          grep -F '**Status:** DRAFT / HOLD' "$path_spec"
-          grep -F '**Activation authority:** none' "$path_spec"
-          grep -F '**Publication authority:** none' "$path_spec"
-          grep -F 'The verifier never repairs, normalizes, rewrites' "$path_spec"
-          grep -F '"status": {"const": "HOLD"}' "$schema"
-          grep -F 'release_authorized: bool = False' "$module"
-          grep -F 'temporal_anchor_verified: bool = False' "$module"
-          grep -F '"publication": False' "$module"
-          grep -F 'Non-canonical evidence bundle path' "$module"
-          grep -F 'already-bound filesystem object' "$module"
-          grep -F 'Stable filesystem object identity is unavailable; BYTES is blocked' "$module"
-          grep -F '(?!.*//)' "$schema"
-          grep -F '(?!.*[\u0000-\u001F\u007F])' "$schema"
+          check_fixed() {
+            label="$1"
+            token="$2"
+            file="$3"
+            if grep -Fq -- "$token" "$file"; then
+              printf 'PASS %s\n' "$label" >> "$report"
+            else
+              printf 'FAIL %s\n' "$label" >> "$report"
+              failed=1
+            fi
+          }
+
+          check_fixed spec_status '**Status:** DRAFT / HOLD' "$spec"
+          check_fixed spec_activation '**Activation authority:** none' "$spec"
+          check_fixed spec_signing '**Signing authority:** none' "$spec"
+          check_fixed spec_publication '**Publication authority:** none' "$spec"
+          check_fixed path_status '**Status:** DRAFT / HOLD' "$path_spec"
+          check_fixed path_activation '**Activation authority:** none' "$path_spec"
+          check_fixed path_publication '**Publication authority:** none' "$path_spec"
+          check_fixed no_path_repair 'The verifier never repairs, normalizes, rewrites' "$path_spec"
+          check_fixed schema_hold '"status": {"const": "HOLD"}' "$schema"
+          check_fixed release_false 'release_authorized: bool = False' "$module"
+          check_fixed temporal_false 'temporal_anchor_verified: bool = False' "$module"
+          check_fixed publication_false '"publication": False' "$module"
+          check_fixed noncanonical_path 'Non-canonical evidence bundle path' "$module"
+          check_fixed object_alias 'already-bound filesystem object' "$module"
+          check_fixed stable_identity 'Stable filesystem object identity is unavailable; BYTES is blocked' "$module"
+          check_fixed duplicate_separator '(?!.*//)' "$schema"
+          check_fixed control_character '(?!.*[\u0000-\u001F\u007F])' "$schema"
 
           forbidden='(^|[[:space:]])(requests|httpx|aiohttp|socket|subprocess)[[:space:].]'
           forbidden+='|private_key|generate_private_key|sign\('
           forbidden+='|publish\(|Save Page Now|pull_request_target'
-
-          if grep -nEi "$forbidden" "$module"; then
-            echo "Evidence artifact verifier boundary was widened." >&2
-            exit 1
+          if grep -nEiq "$forbidden" "$module"; then
+            printf 'FAIL forbidden_capability\n' >> "$report"
+            failed=1
+          else
+            printf 'PASS forbidden_capability\n' >> "$report"
           fi
+
+          cat "$report"
+          exit "$failed"
+
+      - name: Upload HOLD guard diagnostic
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: evidence-artifact-guard-diagnostic
+          path: evidence-artifact-guard-diagnostic.txt
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Validate schema JSON
         run: python -m json.tool schemas/sentinel.evidence.artifact.v1.json >/dev/null
