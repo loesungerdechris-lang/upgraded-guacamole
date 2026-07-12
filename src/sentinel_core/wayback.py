@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import ipaddress
 import json
+import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -30,6 +31,7 @@ DEFAULT_USER_AGENT = "SENTINEL-Wayback-Evidence/0.1 (GPT-5.6-Thinking)"
 
 _ARCHIVE_HOSTS = frozenset({"archive.org", "www.archive.org", "web.archive.org"})
 _TIMESTAMP_RE = re.compile(r"^[0-9]{14}$")
+_LEGACY_IPV4_RE = re.compile(r"^[0-9A-Fa-fxX.]+$")
 _MAX_JSON_BYTES = 8 * 1024 * 1024
 _MAX_CAPTURE_BYTES = 64 * 1024 * 1024
 
@@ -57,6 +59,54 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _parse_legacy_ipv4_component(value: str) -> int:
+    if not value:
+        raise ValueError
+    if value.lower().startswith("0x"):
+        return int(value[2:], 16)
+    if len(value) > 1 and value.startswith("0"):
+        return int(value[1:] or "0", 8)
+    return int(value, 10)
+
+
+def _legacy_ipv4_address(host: str) -> ipaddress.IPv4Address | None:
+    """Parse inet_aton-style numeric IPv4 aliases deterministically."""
+
+    if _LEGACY_IPV4_RE.fullmatch(host) is None:
+        return None
+    parts = host.split(".")
+    if not 1 <= len(parts) <= 4:
+        return None
+    try:
+        values = [_parse_legacy_ipv4_component(part) for part in parts]
+    except ValueError:
+        return None
+
+    limits = {
+        1: (0xFFFFFFFF,),
+        2: (0xFF, 0xFFFFFF),
+        3: (0xFF, 0xFF, 0xFFFF),
+        4: (0xFF, 0xFF, 0xFF, 0xFF),
+    }[len(values)]
+    if any(value < 0 or value > limit for value, limit in zip(values, limits, strict=True)):
+        return None
+
+    if len(values) == 1:
+        packed = values[0]
+    elif len(values) == 2:
+        packed = (values[0] << 24) | values[1]
+    elif len(values) == 3:
+        packed = (values[0] << 24) | (values[1] << 16) | values[2]
+    else:
+        packed = (
+            (values[0] << 24)
+            | (values[1] << 16)
+            | (values[2] << 8)
+            | values[3]
+        )
+    return ipaddress.IPv4Address(packed)
+
+
 def _public_hostname(hostname: str) -> str:
     try:
         host = hostname.encode("idna").decode("ascii").lower()
@@ -71,13 +121,19 @@ def _public_hostname(hostname: str) -> str:
     ):
         raise WaybackConfigurationError("target URL must identify a public web host")
 
+    legacy_address = _legacy_ipv4_address(host)
+    if legacy_address is not None:
+        if not legacy_address.is_global:
+            raise WaybackConfigurationError("target URL must not use a non-public IP address")
+        return str(legacy_address)
+
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
         return host
     if not address.is_global:
         raise WaybackConfigurationError("target URL must not use a non-public IP address")
-    return host
+    return str(address)
 
 
 def normalize_target_url(value: str) -> str:
@@ -184,6 +240,16 @@ def build_replay_url(timestamp: str, original_url: str) -> str:
     return f"{WAYBACK_REPLAY_ORIGIN}/web/{_timestamp(timestamp)}/{normalized}"
 
 
+def _validate_replay_url(value: str, timestamp: str, original_url: str) -> str:
+    replay_url = _archive_url(value)
+    expected = build_replay_url(timestamp, original_url)
+    if replay_url != expected:
+        raise WaybackConfigurationError(
+            "replay URL must bind to the selected timestamp and original URL"
+        )
+    return replay_url
+
+
 @dataclass(frozen=True)
 class WaybackSnapshot:
     """One immutable archived snapshot description."""
@@ -197,9 +263,9 @@ class WaybackSnapshot:
     length: int | None = None
 
     def __post_init__(self) -> None:
-        _timestamp(self.timestamp, "snapshot timestamp")
-        normalize_target_url(self.original_url)
-        _archive_url(self.replay_url)
+        timestamp = _timestamp(self.timestamp, "snapshot timestamp")
+        original_url = normalize_target_url(self.original_url)
+        _validate_replay_url(self.replay_url, timestamp, original_url)
         if isinstance(self.status_code, bool) or not isinstance(self.status_code, int):
             raise WaybackResponseError("snapshot status code is invalid")
         if self.length is not None and (
@@ -246,12 +312,14 @@ def parse_availability_response(payload: Mapping[str, Any]) -> WaybackSnapshot |
         timestamp=timestamp,
         original_url=normalize_target_url(original),
         status_code=status_code,
-        replay_url=_archive_url(secure_replay),
+        replay_url=secure_replay,
     )
 
 
 def parse_cdx_response(payload: Any) -> tuple[WaybackSnapshot, ...]:
-    if not isinstance(payload, list) or not payload:
+    if not isinstance(payload, list):
+        raise WaybackResponseError("CDX response must be a JSON array")
+    if not payload:
         return ()
     header = payload[0]
     required = {"timestamp", "original", "statuscode", "mimetype", "digest", "length"}
@@ -332,9 +400,16 @@ def build_evidence_manifest(
     snapshot: WaybackSnapshot,
     artifacts: list[dict[str, Any]],
     observed_at: str | None = None,
+    cross_verification_sources: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
+    if not artifacts:
+        raise WaybackConfigurationError("evidence manifest requires at least one artifact")
+    if not all(isinstance(artifact, dict) for artifact in artifacts):
+        raise WaybackConfigurationError("evidence manifest artifacts must be JSON objects")
+
     manifest: dict[str, Any] = {
         "schema_version": "sentinel.wayback.evidence.v1",
+        "status": "HOLD",
         "source": {
             "id": WAYBACK_SOURCE_ID,
             "provider": "Internet Archive",
@@ -352,9 +427,18 @@ def build_evidence_manifest(
         "release_gate": {
             "mode": "offline_preview_only",
             "rights_review_status": "required",
+            "privacy_review_status": "required",
+            "provenance_review_status": "required",
+            "sentinel_release_status": "HOLD",
             "publish_restored_content": False,
         },
     }
+    if cross_verification_sources is not None:
+        if not all(isinstance(source, dict) for source in cross_verification_sources):
+            raise WaybackConfigurationError(
+                "cross-verification sources must be JSON objects"
+            )
+        manifest["cross_verification_sources"] = cross_verification_sources
     manifest["manifest_hash"] = sha256_prefixed(canonicalize_json(manifest))
     return manifest
 
@@ -368,6 +452,13 @@ def verify_evidence_manifest(manifest: Mapping[str, Any]) -> bool:
     return claimed == sha256_prefixed(canonicalize_json(unsigned))
 
 
+def _ensure_path_within_root(root: Path, path: Path) -> None:
+    try:
+        path.relative_to(root)
+    except ValueError:
+        raise WaybackConfigurationError("restore target escaped the bundle root") from None
+
+
 def materialize_offline_restore(
     files: Mapping[str, bytes],
     destination: str | Path,
@@ -376,17 +467,43 @@ def materialize_offline_restore(
 ) -> tuple[dict[str, Any], ...]:
     root = Path(destination)
     root.mkdir(parents=True, exist_ok=True)
+    root = root.resolve(strict=True)
     records: list[dict[str, Any]] = []
+
     for relative_path, content in sorted(files.items()):
         safe_path = validate_restore_path(relative_path)
         if not isinstance(content, bytes):
             raise TypeError("restore file content must be bytes")
+
         target = root.joinpath(*PurePosixPath(safe_path).parts)
         target.parent.mkdir(parents=True, exist_ok=True)
+        resolved_parent = target.parent.resolve(strict=True)
+        _ensure_path_within_root(root, resolved_parent)
+
+        if target.is_symlink():
+            raise WaybackConfigurationError("restore target must not be a symbolic link")
         if target.exists() and not overwrite:
             raise FileExistsError(f"restore target already exists: {safe_path}")
+
         temporary = target.with_name(target.name + ".sentinel-tmp")
-        temporary.write_bytes(content)
+        if temporary.exists() or temporary.is_symlink():
+            raise WaybackConfigurationError("temporary restore target already exists")
+
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(temporary, flags, 0o600)
+        try:
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except BaseException:
+            try:
+                temporary.unlink(missing_ok=True)
+            finally:
+                raise
+
         temporary.replace(target)
         records.append(
             {
@@ -505,6 +622,11 @@ class WaybackClient:
     def fetch_capture(self, snapshot: WaybackSnapshot) -> bytes:
         """Fetch archived bytes without executing them or following page links."""
 
+        _validate_replay_url(
+            snapshot.replay_url,
+            snapshot.timestamp,
+            snapshot.original_url,
+        )
         return self._request(
             snapshot.replay_url,
             accept="*/*",
