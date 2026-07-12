@@ -9,8 +9,8 @@
 
 This document is the single navigation and control reference for the SENTINEL
 Wayback Evidence Layer, Phase 2 domain reconstruction, Phase 3 multi-source
-historical evidence, bounded pilot activation, and the manual receipt-bound
-publication gate.
+historical evidence, bounded pilot activation, pilot-specific security, and the
+manual receipt-bound publication gate.
 
 It consolidates the architecture without replacing the normative schema,
 policy, verifier code, source policies, threat models, pilot authorizations, or
@@ -29,10 +29,11 @@ Where documents differ, the following order applies:
 7. `docs/phase3-multi-source-historical-evidence-spec.md`;
 8. `docs/phase3-operational-orchestration-spec.md`;
 9. `docs/phase3-pilot-activation-framework.md`;
-10. implementation checklists and consistency reviews;
-11. executive summaries and this navigation reference.
+10. `docs/phase3-pilot-threat-model-addendum.md`;
+11. implementation checklists and consistency reviews;
+12. executive summaries and this navigation reference.
 
-A summary or pilot document cannot relax a gate defined by a
+A summary, pilot document, or threat addendum cannot relax a gate defined by a
 higher-precedence source. Ambiguity fails closed.
 
 ## 3. Core position
@@ -99,10 +100,11 @@ reviewed pilot.
 ### Phase 3 — Multi-Source Historical Evidence Engine
 
 Tracked in Issue #29 and specified in
-`docs/phase3-multi-source-historical-evidence-spec.md`, with security controls
-in `docs/phase3-multi-source-threat-model.md`, operational contracts in
-`docs/phase3-operational-orchestration-spec.md`, and pilot prerequisites in
-`docs/phase3-pilot-activation-framework.md`.
+`docs/phase3-multi-source-historical-evidence-spec.md`, with base security
+controls in `docs/phase3-multi-source-threat-model.md`, operational contracts in
+`docs/phase3-operational-orchestration-spec.md`, pilot prerequisites in
+`docs/phase3-pilot-activation-framework.md`, and pilot-only threats in
+`docs/phase3-pilot-threat-model-addendum.md`.
 
 The Wayback Machine remains the primary source. archive.today-family services,
 Perma.cc, Memento discovery, ArchiveBox, and SingleFile are separate Evidence
@@ -115,12 +117,13 @@ establish factual truth by source count.
 
 A bounded Phase 3 pilot may be designed under HOLD before publication exists.
 Issue #30 remains the separate publication dependency and grants no adapter,
-acquisition, pilot, or network authority.
+acquisition, pilot, environment, or network authority.
 
-A real-source pilot additionally requires the separate activation framework,
-an exact pilot authorization record, approved registries and transports, an
-isolated environment, privacy and threat review, and a manual GO/HOLD decision.
-Creating those components does not activate them.
+A real-source pilot additionally requires the activation framework, the pilot
+threat-model addendum, an exact pilot authorization record, approved registries
+and transports, an isolated environment, privacy and terms review, tested stop
+controls, and a manual GO/HOLD decision. Creating those components does not
+activate them.
 
 ## 5. Manifest and provenance model
 
@@ -152,7 +155,8 @@ fields.
 
 ### HOLD
 
-Normal state for acquisition, reconstruction, orchestration, and pilot work.
+Normal state for acquisition, reconstruction, orchestration, pilot preparation,
+and pilot evidence.
 
 - offline or separately authorized bounded operation only;
 - rights, privacy, provenance, security, and source-policy reviews apply;
@@ -223,8 +227,14 @@ The current and planned architecture addresses:
 - signing-key leakage and role spoofing;
 - supply-chain compromise;
 - automatic status elevation and release-destination substitution;
-- accidental pilot activation or environment privilege widening;
-- loss of audit evidence through automatic abort deletion.
+- stale authorization replay and approval substitution;
+- review-to-run TOCTOU and stacked-PR drift;
+- registry, adapter, transport, and operation-plan substitution;
+- environment bypass, fork secret exposure, and runner contamination;
+- retry storms, pagination expansion, and resource exhaustion;
+- GitHub Actions artifact, log, notification, and evidence-store leakage;
+- stop-switch failure, incident concealment, and audit-evidence deletion;
+- indefinite over-retention and unauthorized destruction.
 
 Any unsupported or ambiguous condition returns HOLD or an explicit failure. It
 is never converted into a successful absence or approval finding.
@@ -253,14 +263,16 @@ retention and disposition decision.
 - Draft PR #27: Phase 1, DRAFT / HOLD;
 - Draft PR #31: Memento discovery adapter, DRAFT / HOLD;
 - Draft PR #32: operational Phase 3 specification, DRAFT / HOLD;
+- Draft PR #33: pilot activation framework, DRAFT / HOLD;
 - Issue #28: Phase 2 planning;
-- Issue #29: Phase 3 planning, threat model, and staged implementation;
+- Issue #29: Phase 3 planning, threat models, and staged implementation;
 - Issue #30: receipt-bound publication verifier planning;
-- pilot activation framework: DRAFT / HOLD;
+- pilot threat-model addendum: DRAFT / HOLD;
 - publication verifier: not implemented;
 - publication authority: not granted;
 - recurring acquisition: not authorized;
 - external archive connectors: not authorized;
+- pilot environment: not created or activated;
 - live pilot: not authorized;
 - merge and production activation: require explicit separate GO decisions.
 
@@ -282,6 +294,7 @@ docs/phase3-multi-source-historical-evidence-spec.md
 docs/phase3-multi-source-threat-model.md
 docs/phase3-operational-orchestration-spec.md
 docs/phase3-pilot-activation-framework.md
+docs/phase3-pilot-threat-model-addendum.md
 docs/memento-adapter-boundary.md
 docs/wayback-release-receipt-gate.md
 docs/wayback-release-gate-executive-summary.md
@@ -292,10 +305,12 @@ tests/test_memento.py
 tests/test_memento_retry.py
 tests/test_phase3_operational_spec.py
 tests/test_phase3_pilot_activation_framework.py
+tests/test_phase3_pilot_threat_model_addendum.py
 .github/workflows/sentinel-wayback-evidence.yml
 .github/workflows/sentinel-memento-adapter.yml
 .github/workflows/sentinel-phase3-operational-spec.yml
 .github/workflows/sentinel-phase3-pilot-activation.yml
+.github/workflows/sentinel-phase3-pilot-threat-model.yml
 ```
 
 ## 12. Change-control rule
@@ -303,8 +318,9 @@ tests/test_phase3_pilot_activation_framework.py
 Any change that widens trusted hosts, enables credentials, adds recurring
 acquisition, performs archive writes, executes active content, adds extraction
 parsers, allows live fallback, weakens HOLD, changes pilot roles or limits,
-changes release roles or thresholds, adds signing capability, or enables
-publication requires:
+changes authorization bindings, environment privileges, egress destinations,
+retention rules, release roles or thresholds, adds signing capability, or
+enables publication requires:
 
 - a separate scoped change;
 - updated threat and privacy analysis;
