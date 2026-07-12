@@ -26,25 +26,33 @@ def h(label: str | bytes) -> str:
     return sha256_prefixed(label)
 
 
-def make_member(member_id: str, payload: bytes, path: str) -> dict:
-    source_id = "internet-archive-wayback" if member_id.endswith("1") else "memento-discovery"
+def make_member(member_id: str, payload: bytes, path: str | None) -> dict:
+    source_id = (
+        "internet-archive-wayback"
+        if member_id.endswith("1")
+        else "memento-discovery"
+    )
     declared = source_id == "memento-discovery"
     value = {
         "member_id": member_id,
-        "kind": "RAW_PAYLOAD",
+        "kind": "DISCOVERY_RECORD" if declared else "RAW_PAYLOAD",
         "source_id": source_id,
         "path": path,
-        "media_type": "text/html",
+        "media_type": "application/json" if declared else "text/html",
         "byte_length": len(payload),
         "sha256": h(payload),
         "observed_at": "2026-07-12T10:00:00Z",
         "provenance": {
-            "source_origin": "memento-protocol-discovery" if declared else "wayback-phase1",
+            "source_origin": (
+                "memento-protocol-discovery" if declared else "wayback-phase1"
+            ),
             "source_record_hash": h(f"record:{member_id}"),
             "identity_status": "DECLARED" if declared else "VERIFIED",
             "datetime_status": "DECLARED" if declared else "VERIFIED",
             "acquisition_authority": (
-                "separate_policy_required" if declared else "phase1_wayback_read_only"
+                "separate_policy_required"
+                if declared
+                else "phase1_wayback_read_only"
             ),
         },
         "member_hash": ZERO_HASH,
@@ -66,7 +74,11 @@ def make_event(
         "sequence": sequence,
         "event_type": event_type,
         "occurred_at": occurred_at,
-        "actor": {"actor_type": "SYSTEM", "actor_id_hash": None, "role": "builder"},
+        "actor": {
+            "actor_type": "SYSTEM",
+            "actor_id_hash": None,
+            "role": "builder",
+        },
         "input_hashes": sorted(inputs),
         "output_hashes": sorted(outputs),
         "policy_hashes": [policy_hash],
@@ -81,20 +93,32 @@ def make_event(
 def make_artifact() -> dict:
     members = [
         make_member("member-001", b"alpha", "raw/alpha.html"),
-        make_member("member-002", b"beta", "raw/beta.html"),
+        make_member("member-002", b"beta", "raw/beta.json"),
     ]
     policy_hash = h("policy:v1")
     governance = {
         "policies": [
-            {"policy_id": "evidence-policy", "version": "1.0", "sha256": policy_hash}
+            {
+                "policy_id": "evidence-policy",
+                "version": "1.0",
+                "sha256": policy_hash,
+            }
         ],
         "registries": [
-            {"registry_id": "source-registry", "version": "1.0", "sha256": h("registry")}
+            {
+                "registry_id": "source-registry",
+                "version": "1.0",
+                "sha256": h("registry"),
+            }
         ],
         "operation_plan_hash": h("operation-plan"),
         "source_commit": "a" * 40,
         "parent_stack_hash": h("parent-stack"),
-        "ci_evidence": {"workflow_hash": h("workflow"), "run_id": "run-123", "result": "SUCCESS"},
+        "ci_evidence": {
+            "workflow_hash": h("workflow"),
+            "run_id": "run-123",
+            "result": "SUCCESS",
+        },
         "environment_descriptor_hash": None,
         "privacy_review_hash": h("privacy"),
         "terms_review_hash": h("terms"),
@@ -177,6 +201,24 @@ def seal(value: dict) -> None:
     value["artifact_hash"] = compute_artifact_hash(value)
 
 
+def rebind_members(value: dict) -> None:
+    for item in value["members"]:
+        item["member_hash"] = compute_member_hash(item)
+    evidence_root = merkle_root([item["member_hash"] for item in value["members"]])
+    value["roots"]["evidence_root"] = evidence_root
+    value["lifecycle"][0]["output_hashes"] = sorted(
+        item["member_hash"] for item in value["members"]
+    )
+    value["lifecycle"][1]["input_hashes"] = sorted(
+        [
+            evidence_root,
+            value["roots"]["conflict_root"],
+            value["roots"]["governance_root"],
+        ]
+    )
+    seal(value)
+
+
 def test_valid_artifact_is_integrity_ok_but_not_released():
     result = verify_evidence_artifact(make_artifact())
     assert result.status == "SEA_INTEGRITY_OK"
@@ -189,24 +231,56 @@ def test_exact_local_bytes_raise_verification_to_bytes(tmp_path: Path):
     value = make_artifact()
     (tmp_path / "raw").mkdir()
     (tmp_path / "raw" / "alpha.html").write_bytes(b"alpha")
-    (tmp_path / "raw" / "beta.html").write_bytes(b"beta")
+    (tmp_path / "raw" / "beta.json").write_bytes(b"beta")
     assert verify_evidence_artifact(value, bundle_root=tmp_path).level == "BYTES"
+
+
+def test_pathless_member_cannot_receive_bytes_level(tmp_path: Path):
+    value = make_artifact()
+    value["members"][1]["path"] = None
+    rebind_members(value)
+    result = verify_evidence_artifact(value, bundle_root=tmp_path)
+    assert result.integrity_valid is False
+    assert "requires every member to be path-bound" in result.issues[0].message
 
 
 def test_payload_tamper_fails(tmp_path: Path):
     value = make_artifact()
     (tmp_path / "raw").mkdir()
     (tmp_path / "raw" / "alpha.html").write_bytes(b"ALPHA")
-    (tmp_path / "raw" / "beta.html").write_bytes(b"beta")
+    (tmp_path / "raw" / "beta.json").write_bytes(b"beta")
     result = verify_evidence_artifact(value, bundle_root=tmp_path)
     assert result.integrity_valid is False
     assert "payload hash mismatch" in result.issues[0].message
 
 
-@pytest.mark.parametrize("field,new_value", [("media_type", "text/plain"), ("byte_length", 999)])
+@pytest.mark.parametrize(
+    ("field", "new_value"),
+    [("media_type", "text/plain"), ("byte_length", 999)],
+)
 def test_member_descriptor_tamper_fails(field: str, new_value: object):
     value = make_artifact()
     value["members"][0][field] = new_value
+    assert verify_evidence_artifact(value).integrity_valid is False
+
+
+def test_memento_cannot_claim_verified_identity_or_time():
+    value = make_artifact()
+    value["members"][1]["provenance"]["identity_status"] = "VERIFIED"
+    value["members"][1]["provenance"]["datetime_status"] = "VERIFIED"
+    rebind_members(value)
+    result = verify_evidence_artifact(value)
+    assert result.integrity_valid is False
+    assert (
+        "fixed Memento discovery provenance profile" in result.issues[0].message
+        or "Schema validation failed" in result.issues[0].message
+    )
+
+
+def test_memento_origin_and_source_id_cannot_diverge():
+    value = make_artifact()
+    value["members"][1]["source_id"] = "other-source"
+    rebind_members(value)
     assert verify_evidence_artifact(value).integrity_valid is False
 
 
@@ -221,8 +295,6 @@ def test_governance_tamper_fails_even_when_outer_hash_is_recomputed():
 
 def test_previous_event_hash_tamper_fails():
     value = make_artifact()
-    value["lifecycle"][1]["previous_event_hash"] = h("wrong")
-    seal(value)
     value["lifecycle"][1]["previous_event_hash"] = h("wrong")
     value["lifecycle"][1]["event_hash"] = compute_event_hash(value["lifecycle"][1])
     value["roots"]["lifecycle_root"] = value["lifecycle"][1]["event_hash"]
@@ -264,20 +336,52 @@ def test_temporal_claim_must_equal_created_at():
     assert verify_evidence_artifact(value).integrity_valid is False
 
 
-def test_paths_are_traversal_and_symlink_safe(tmp_path: Path):
+def test_overprecision_timestamp_is_rejected_before_ordering():
+    value = make_artifact()
+    value["lifecycle"][0]["occurred_at"] = "2026-07-12T10:05:00.1234569Z"
+    seal(value)
+    result = verify_evidence_artifact(value)
+    assert result.integrity_valid is False
+    assert (
+        "at most six fractional-second digits" in result.issues[0].message
+        or "Schema validation failed" in result.issues[0].message
+    )
+
+
+def test_paths_are_traversal_and_final_symlink_safe(tmp_path: Path):
     traversal = make_artifact()
     traversal["members"][0]["path"] = "../escape"
-    traversal["members"][0]["member_hash"] = compute_member_hash(traversal["members"][0])
-    traversal["artifact_hash"] = compute_artifact_hash(traversal)
+    rebind_members(traversal)
     assert verify_evidence_artifact(traversal).integrity_valid is False
 
     symlink = make_artifact()
     outside = tmp_path / "outside"
     outside.write_bytes(b"alpha")
     (tmp_path / "raw").mkdir()
-    (tmp_path / "raw" / "alpha.html").symlink_to(outside)
-    (tmp_path / "raw" / "beta.html").write_bytes(b"beta")
-    assert verify_evidence_artifact(symlink, bundle_root=tmp_path).integrity_valid is False
+    try:
+        (tmp_path / "raw" / "alpha.html").symlink_to(outside)
+    except OSError:
+        pytest.skip("symlinks unavailable")
+    (tmp_path / "raw" / "beta.json").write_bytes(b"beta")
+    assert (
+        verify_evidence_artifact(symlink, bundle_root=tmp_path).integrity_valid
+        is False
+    )
+
+
+def test_intermediate_symlink_component_is_rejected(tmp_path: Path):
+    value = make_artifact()
+    real = tmp_path / "real"
+    real.mkdir()
+    (real / "alpha.html").write_bytes(b"alpha")
+    (real / "beta.json").write_bytes(b"beta")
+    try:
+        (tmp_path / "raw").symlink_to(real, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlinks unavailable")
+    result = verify_evidence_artifact(value, bundle_root=tmp_path)
+    assert result.integrity_valid is False
+    assert "symbolic-link component" in result.issues[0].message
 
 
 def test_member_order_is_bound():
@@ -312,10 +416,18 @@ def test_merkle_proof_binds_hash_index_and_count():
     hashes = [item["member_hash"] for item in value["members"]]
     proof = build_merkle_proof(hashes, 1)
     assert verify_merkle_proof(
-        hashes[1], index=1, leaf_count=2, proof=proof, expected_root=value["roots"]["evidence_root"]
+        hashes[1],
+        index=1,
+        leaf_count=2,
+        proof=proof,
+        expected_root=value["roots"]["evidence_root"],
     )
     assert not verify_merkle_proof(
-        hashes[1], index=0, leaf_count=2, proof=proof, expected_root=value["roots"]["evidence_root"]
+        hashes[1],
+        index=0,
+        leaf_count=2,
+        proof=proof,
+        expected_root=value["roots"]["evidence_root"],
     )
 
 
@@ -335,7 +447,10 @@ def test_human_actor_requires_hashed_identifier():
 
 def test_duplicate_json_keys_and_oversize_are_rejected(tmp_path: Path):
     duplicate = tmp_path / "duplicate.json"
-    duplicate.write_text('{"schema_version":"a","schema_version":"b"}', encoding="utf-8")
+    duplicate.write_text(
+        '{"schema_version":"a","schema_version":"b"}',
+        encoding="utf-8",
+    )
     assert verify_evidence_artifact_file(duplicate).integrity_valid is False
 
     large = tmp_path / "large.json"
