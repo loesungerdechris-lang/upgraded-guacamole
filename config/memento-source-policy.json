@@ -1,0 +1,44 @@
+{
+  "schema_version": "sentinel.historical-web.source-policy.v1-draft",
+  "source_id": "memento-timemap",
+  "source_class": "memento-discovery",
+  "status": "HOLD",
+  "enabled": false,
+  "acquisition_authority": "separate_policy_required",
+  "network": {
+    "timemap_base_url": null,
+    "allowed_timemap_hosts": [],
+    "allowed_source_archive_hosts": [],
+    "method": "GET",
+    "follow_redirects": false,
+    "send_credentials": false,
+    "send_cookies": false,
+    "timeout_seconds": 20,
+    "max_attempts": 3,
+    "max_response_bytes": 8388608,
+    "max_mementos": 1000,
+    "honor_retry_after": true,
+    "aggressive_parallelism": false
+  },
+  "capabilities": {
+    "timemap_discovery": false,
+    "memento_content_acquisition": false,
+    "active_content_execution": false,
+    "recursive_timemap_following": false,
+    "automatic_status_elevation": false,
+    "publication": false
+  },
+  "required_reviews": [
+    "source_terms",
+    "privacy",
+    "provenance",
+    "security",
+    "sentinel_activation"
+  ],
+  "limitations": [
+    "Memento is discovery provenance, not the provenance of the underlying capture",
+    "Each discovered Memento must retain its actual source archive",
+    "A missing Memento result does not prove historical non-existence",
+    "Cross-source agreement does not establish factual truth or release authority"
+  ]
+}
