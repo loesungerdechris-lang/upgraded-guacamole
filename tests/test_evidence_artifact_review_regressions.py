@@ -27,6 +27,9 @@ def test_filesystem_identity_unavailable_blocks_bytes():
         "raw/a\x00",
         "raw/a\x1f",
         "raw/a\x7f",
+        "C:/raw/a",
+        "raw/C:foo",
+        "raw/file.txt:stream",
     ],
 )
 def test_safe_path_schema_matches_semantic_rejection(bad_path: str):
