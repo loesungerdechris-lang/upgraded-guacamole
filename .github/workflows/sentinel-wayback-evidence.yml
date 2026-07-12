@@ -12,6 +12,8 @@ on:
       - "config/wayback-source-policy.json"
       - "docs/wayback-evidence-layer.md"
       - "docs/wayback-evidence-policy.md"
+      - "docs/phase3-multi-source-historical-evidence-spec.md"
+      - "docs/wayback-release-receipt-gate.md"
       - ".github/workflows/sentinel-wayback-evidence.yml"
   push:
     branches: ["main"]
@@ -24,6 +26,8 @@ on:
       - "config/wayback-source-policy.json"
       - "docs/wayback-evidence-layer.md"
       - "docs/wayback-evidence-policy.md"
+      - "docs/phase3-multi-source-historical-evidence-spec.md"
+      - "docs/wayback-release-receipt-gate.md"
       - ".github/workflows/sentinel-wayback-evidence.yml"
 
 permissions:
@@ -64,7 +68,8 @@ jobs:
           grep -F 'https://web.archive.org' "$source_file"
           grep -F '"automatic_save_page_now": false' "$policy_file"
           grep -F '"publish_restored_content": false' "$policy_file"
-          grep -F 'Non-HOLD manifests require explicit' "$validator_file"
+          grep -F 'VERIFIED manifests require explicit release-aware validation' "$validator_file"
+          grep -F 'PUBLISHED manifests require the separate manual release-receipt gate' "$validator_file"
 
           forbidden='(waybackrebuilder|waybackdownloader|waybackdownloads|shell[[:space:]]*=[[:space:]]*True|execute_script|selenium|playwright)'
           if grep -nEi "$forbidden" "$source_file" "$validator_file" "$policy_file"; then
