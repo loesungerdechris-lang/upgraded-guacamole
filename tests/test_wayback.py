@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -9,6 +10,7 @@ from sentinel_core.wayback import (
     DEFAULT_USER_AGENT,
     WaybackClient,
     WaybackConfigurationError,
+    WaybackResponseError,
     WaybackSnapshot,
     build_artifact_record,
     build_cdx_url,
@@ -36,6 +38,10 @@ def test_normalize_target_url_is_stable_and_drops_fragment() -> None:
         "http://localhost/admin",
         "http://127.0.0.1/private",
         "http://10.0.0.4/private",
+        "http://2130706433/private",
+        "http://0177.0.0.1/private",
+        "http://127.1/private",
+        "http://0x7f000001/private",
     ],
 )
 def test_normalize_target_url_rejects_unsafe_targets(url: str) -> None:
@@ -78,6 +84,24 @@ def test_parse_availability_response() -> None:
     assert snapshot.replay_url.startswith("https://web.archive.org/")
 
 
+@pytest.mark.parametrize(
+    "replay_url",
+    [
+        "https://archive.org/download/item/file.html",
+        "https://web.archive.org/web/20240102030406/https://example.com/",
+        "https://web.archive.org/web/20240102030405/https://example.net/",
+    ],
+)
+def test_snapshot_rejects_replay_url_not_bound_to_capture(replay_url: str) -> None:
+    with pytest.raises(WaybackConfigurationError):
+        WaybackSnapshot(
+            timestamp="20240102030405",
+            original_url="https://example.com/",
+            status_code=200,
+            replay_url=replay_url,
+        )
+
+
 def test_parse_cdx_response() -> None:
     payload = [
         ["timestamp", "original", "statuscode", "mimetype", "digest", "length"],
@@ -94,6 +118,11 @@ def test_parse_cdx_response() -> None:
     assert len(snapshots) == 1
     assert snapshots[0].archive_digest == "ABC123"
     assert snapshots[0].length == 1200
+
+
+def test_parse_cdx_response_rejects_non_array_payload() -> None:
+    with pytest.raises(WaybackResponseError):
+        parse_cdx_response({"error": "rate limited"})
 
 
 def test_manifest_hash_detects_tampering() -> None:
@@ -117,6 +146,7 @@ def test_manifest_hash_detects_tampering() -> None:
         artifacts=[artifact],
         observed_at="2026-07-12T08:00:00Z",
     )
+    assert manifest["status"] == "HOLD"
     assert verify_evidence_manifest(manifest)
     manifest["artifacts"][0]["byte_length"] = 1
     assert not verify_evidence_manifest(manifest)
@@ -131,6 +161,20 @@ def test_materialize_offline_restore_stays_inside_root(tmp_path) -> None:
     assert len(records) == 2
     with pytest.raises(WaybackConfigurationError):
         materialize_offline_restore({"../escape.txt": b"no"}, tmp_path)
+
+
+@pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks are unavailable")
+def test_materialize_offline_restore_rejects_symlink_escape(tmp_path) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside"
+    outside.mkdir()
+    link = tmp_path / "site"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlink creation is not permitted")
+    with pytest.raises(WaybackConfigurationError):
+        materialize_offline_restore({"site/index.html": b"no"}, tmp_path)
+    assert not (outside / "index.html").exists()
 
 
 def test_client_identifies_itself_and_uses_fixed_endpoint() -> None:
