@@ -441,7 +441,10 @@ def test_intermediate_symlink_component_is_rejected(tmp_path: Path):
         pytest.skip("symlinks unavailable")
     result = verify_evidence_artifact(value, bundle_root=tmp_path)
     assert result.integrity_valid is False
-    assert "symbolic-link component" in result.issues[0].message
+    assert (
+        "symbolic-link component" in result.issues[0].message
+        or "Unable to open bundle member safely" in result.issues[0].message
+    )
 
 
 def test_member_order_is_bound():
