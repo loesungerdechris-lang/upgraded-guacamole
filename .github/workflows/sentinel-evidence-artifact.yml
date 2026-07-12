@@ -1,0 +1,180 @@
+name: SENTINEL Evidence Artifact
+
+on:
+  pull_request:
+    branches:
+      - main
+      - agent/phase3-pilot-threat-model-hold
+    paths:
+      - "docs/sentinel-evidence-artifact-spec.md"
+      - "docs/sentinel-evidence-artifact-path-rules.md"
+      - "schemas/sentinel.evidence.artifact.v1.json"
+      - "src/sentinel_core/evidence_artifact.py"
+      - "tests/test_evidence_artifact.py"
+      - "tests/test_evidence_artifact_review_regressions.py"
+      - ".github/workflows/sentinel-evidence-artifact.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "docs/sentinel-evidence-artifact-spec.md"
+      - "docs/sentinel-evidence-artifact-path-rules.md"
+      - "schemas/sentinel.evidence.artifact.v1.json"
+      - "src/sentinel_core/evidence_artifact.py"
+      - "tests/test_evidence_artifact.py"
+      - "tests/test_evidence_artifact_review_regressions.py"
+      - ".github/workflows/sentinel-evidence-artifact.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  evidence-artifact:
+    name: evidence-artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package with dev tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Guard verifier-only HOLD boundary
+        shell: bash
+        run: |
+          set -uo pipefail
+          spec="docs/sentinel-evidence-artifact-spec.md"
+          path_spec="docs/sentinel-evidence-artifact-path-rules.md"
+          schema="schemas/sentinel.evidence.artifact.v1.json"
+          module="src/sentinel_core/evidence_artifact.py"
+          regressions="tests/test_evidence_artifact_review_regressions.py"
+          report="evidence-artifact-guard-diagnostic.txt"
+          : > "$report"
+          failed=0
+
+          check_fixed() {
+            label="$1"
+            token="$2"
+            file="$3"
+            if grep -Fq -- "$token" "$file"; then
+              printf 'PASS %s\n' "$label" >> "$report"
+            else
+              printf 'FAIL %s\n' "$label" >> "$report"
+              failed=1
+            fi
+          }
+
+          check_fixed spec_status '**Status:** DRAFT / HOLD' "$spec"
+          check_fixed spec_activation '**Activation authority:** none' "$spec"
+          check_fixed spec_signing '**Signing authority:** none' "$spec"
+          check_fixed spec_publication '**Publication authority:** none' "$spec"
+          check_fixed path_status '**Status:** DRAFT / HOLD' "$path_spec"
+          check_fixed path_activation '**Activation authority:** none' "$path_spec"
+          check_fixed path_publication '**Publication authority:** none' "$path_spec"
+          check_fixed no_path_repair 'The verifier never repairs, normalizes, rewrites' "$path_spec"
+          check_fixed handle_bound_docs 'openat' "$path_spec"
+          check_fixed schema_hold '"status": {"const": "HOLD"}' "$schema"
+          check_fixed release_false 'release_authorized: bool = False' "$module"
+          check_fixed temporal_false 'temporal_anchor_verified: bool = False' "$module"
+          check_fixed publication_false '"publication": False' "$module"
+          check_fixed noncanonical_path 'Non-canonical evidence bundle path' "$module"
+          check_fixed object_alias 'already-bound filesystem object' "$module"
+          check_fixed stable_identity 'Stable filesystem object identity is unavailable; BYTES is blocked' "$module"
+          check_fixed bindings_path_gate '_require_unique_member_paths(members)' "$module"
+          check_fixed unicode_scalar_guard 'String contains an isolated Unicode surrogate' "$module"
+          check_fixed strict_utf8_decode 'errors="strict"' "$module"
+          check_fixed bounded_read 'handle.read(max_bytes + 1)' "$module"
+          check_fixed nofollow_open 'O_NOFOLLOW' "$module"
+          check_fixed nonblocking_open 'O_NONBLOCK' "$module"
+          check_fixed directory_relative_open 'dir_fd=' "$module"
+          check_fixed secure_bundle_open '_open_bundle_member_nofollow(root, relative)' "$module"
+          check_fixed windows_reserved 'Windows-reserved evidence bundle path segment' "$module"
+          check_fixed bindings_duplicate_regression 'test_duplicate_descriptor_path_is_rejected_for_bindings' "$regressions"
+          check_fixed no_hash_regression 'test_in_memory_surrogates_fail_before_hash' "$regressions"
+          check_fixed escaped_json_regression 'test_json_escaped_surrogates_are_rejected_after_strict_parse' "$regressions"
+          check_fixed bounded_read_regression 'test_json_size_limit_is_enforced_during_read' "$regressions"
+          check_fixed fifo_regression 'test_json_loader_rejects_fifo_without_blocking' "$regressions"
+          check_fixed json_symlink_regression 'test_json_loader_does_not_follow_final_symlink' "$regressions"
+          check_fixed bundle_symlink_regression 'test_bundle_open_does_not_follow_final_symlink' "$regressions"
+          check_fixed bundle_fifo_regression 'test_bundle_loader_rejects_fifo_without_blocking' "$regressions"
+          check_fixed bundle_nonblocking_capability_regression 'test_bundle_open_requires_nonblocking_capability' "$regressions"
+          check_fixed bundle_regular_file_regression 'test_bundle_open_accepts_regular_file' "$regressions"
+          check_fixed reserved_name_regression 'raw/con.txt' "$regressions"
+          check_fixed duplicate_separator '(?!.*//)' "$schema"
+          check_fixed control_character '(?!.*[\\u0000-\\u001F\\u007F])' "$schema"
+          check_fixed trailing_dot_space '[^/]*[ .]' "$schema"
+          check_fixed reserved_name_schema '[Cc][Oo][Nn]' "$schema"
+
+          if sed -n \
+            '/^def _open_bundle_member_nofollow(/,/^def load_evidence_artifact_json(/p' \
+            "$module" | grep -Fq '_regular_open_flags(nonblocking=True)'; then
+            printf 'PASS bundle_nonblocking_open\n' >> "$report"
+          else
+            printf 'FAIL bundle_nonblocking_open\n' >> "$report"
+            failed=1
+          fi
+
+          forbidden='(^|[[:space:]])(requests|httpx|aiohttp|socket|subprocess)[[:space:].]'
+          forbidden+='|private_key|generate_private_key|sign\('
+          forbidden+='|publish\(|Save Page Now|pull_request_target'
+          if grep -nEiq "$forbidden" "$module"; then
+            printf 'FAIL forbidden_capability\n' >> "$report"
+            failed=1
+          else
+            printf 'PASS forbidden_capability\n' >> "$report"
+          fi
+
+          cat "$report"
+          exit "$failed"
+
+      - name: Upload HOLD guard diagnostic
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: evidence-artifact-guard-diagnostic
+          path: evidence-artifact-guard-diagnostic.txt
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Validate schema JSON
+        run: python -m json.tool schemas/sentinel.evidence.artifact.v1.json >/dev/null
+
+      - name: Compile
+        run: |
+          python -m compileall -q \
+            src/sentinel_core/evidence_artifact.py \
+            tests/test_evidence_artifact.py \
+            tests/test_evidence_artifact_review_regressions.py
+
+      - name: Lint
+        run: |
+          ruff check \
+            src/sentinel_core/evidence_artifact.py \
+            tests/test_evidence_artifact.py \
+            tests/test_evidence_artifact_review_regressions.py
+
+      - name: Test evidence artifact
+        run: |
+          pytest -q \
+            tests/test_evidence_artifact.py \
+            tests/test_evidence_artifact_review_regressions.py \
+            --junitxml=evidence-artifact-junit.xml
+
+      - name: Upload non-sensitive test report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: evidence-artifact-test-report
+          path: evidence-artifact-junit.xml
+          if-no-files-found: error
+          retention-days: 1
