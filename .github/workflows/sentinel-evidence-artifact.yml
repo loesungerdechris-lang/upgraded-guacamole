@@ -106,11 +106,23 @@ jobs:
           check_fixed fifo_regression 'test_json_loader_rejects_fifo_without_blocking' "$regressions"
           check_fixed json_symlink_regression 'test_json_loader_does_not_follow_final_symlink' "$regressions"
           check_fixed bundle_symlink_regression 'test_bundle_open_does_not_follow_final_symlink' "$regressions"
+          check_fixed bundle_fifo_regression 'test_bundle_loader_rejects_fifo_without_blocking' "$regressions"
+          check_fixed bundle_nonblocking_capability_regression 'test_bundle_open_requires_nonblocking_capability' "$regressions"
+          check_fixed bundle_regular_file_regression 'test_bundle_open_accepts_regular_file' "$regressions"
           check_fixed reserved_name_regression 'raw/con.txt' "$regressions"
           check_fixed duplicate_separator '(?!.*//)' "$schema"
           check_fixed control_character '(?!.*[\\u0000-\\u001F\\u007F])' "$schema"
           check_fixed trailing_dot_space '[^/]*[ .]' "$schema"
           check_fixed reserved_name_schema '[Cc][Oo][Nn]' "$schema"
+
+          if sed -n \
+            '/^def _open_bundle_member_nofollow(/,/^def load_evidence_artifact_json(/p' \
+            "$module" | grep -Fq '_regular_open_flags(nonblocking=True)'; then
+            printf 'PASS bundle_nonblocking_open\n' >> "$report"
+          else
+            printf 'FAIL bundle_nonblocking_open\n' >> "$report"
+            failed=1
+          fi
 
           forbidden='(^|[[:space:]])(requests|httpx|aiohttp|socket|subprocess)[[:space:].]'
           forbidden+='|private_key|generate_private_key|sign\('
