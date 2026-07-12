@@ -196,7 +196,7 @@ def test_exact_local_bytes_raise_verification_to_bytes(tmp_path: Path):
 def test_payload_tamper_fails(tmp_path: Path):
     value = make_artifact()
     (tmp_path / "raw").mkdir()
-    (tmp_path / "raw" / "alpha.html").write_bytes(b"tampered")
+    (tmp_path / "raw" / "alpha.html").write_bytes(b"ALPHA")
     (tmp_path / "raw" / "beta.html").write_bytes(b"beta")
     result = verify_evidence_artifact(value, bundle_root=tmp_path)
     assert result.integrity_valid is False
