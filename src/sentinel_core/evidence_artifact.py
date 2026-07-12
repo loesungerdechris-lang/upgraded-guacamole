@@ -346,12 +346,7 @@ def _require_sorted_hashes(values: Sequence[str], label: str) -> None:
 
 
 def _validate_safe_path(value: str) -> str:
-    """Validate an exact, portable POSIX-relative bundle path.
-
-    The verifier never repairs or normalizes descriptor paths. Any alternate
-    spelling that would normalize to another path is rejected before hashing or
-    filesystem access.
-    """
+    """Validate an exact, portable POSIX-relative bundle path."""
 
     if not isinstance(value, str) or not value:
         _fail("Unsafe evidence bundle path")
@@ -362,8 +357,7 @@ def _validate_safe_path(value: str) -> str:
     segments = value.split("/")
     if any(segment in {"", ".", ".."} for segment in segments):
         _fail("Non-canonical evidence bundle path")
-    canonical = "/".join(segments)
-    if canonical != value or PurePosixPath(value).as_posix() != value:
+    if "/".join(segments) != value or PurePosixPath(value).as_posix() != value:
         _fail("Non-canonical evidence bundle path")
     return value
 
@@ -450,14 +444,14 @@ def _reject_symlink_components(root: Path, relative: str, index: int) -> Path:
     return current
 
 
-def _filesystem_identity(path: Path, stat_result: os.stat_result) -> tuple[Any, ...]:
-    """Return a fail-closed identity key for resolved object aliases."""
+def _filesystem_identity(stat_result: os.stat_result) -> tuple[int, int]:
+    """Return a stable filesystem object identity or fail closed."""
 
     inode = int(getattr(stat_result, "st_ino", 0))
     device = int(getattr(stat_result, "st_dev", 0))
-    if inode:
-        return ("inode", device, inode)
-    return ("resolved", os.path.normcase(str(path)))
+    if inode <= 0:
+        _fail("Stable filesystem object identity is unavailable; BYTES is blocked")
+    return device, inode
 
 
 def _verify_bundle(
@@ -483,7 +477,7 @@ def _verify_bundle(
 
     seen_descriptor_paths: set[str] = set()
     seen_resolved_paths: set[str] = set()
-    seen_identities: set[tuple[Any, ...]] = set()
+    seen_identities: set[tuple[int, int]] = set()
 
     for index, member in enumerate(members):
         relative = _validate_safe_path(member["path"])
@@ -508,7 +502,7 @@ def _verify_bundle(
         try:
             with resolved.open("rb") as handle:
                 stat_result = os.fstat(handle.fileno())
-                identity = _filesystem_identity(resolved, stat_result)
+                identity = _filesystem_identity(stat_result)
                 if identity in seen_identities:
                     _fail(
                         f"Member {index} resolves to an already-bound filesystem object"
