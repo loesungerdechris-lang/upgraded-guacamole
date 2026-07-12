@@ -57,6 +57,7 @@ jobs:
           path_spec="docs/sentinel-evidence-artifact-path-rules.md"
           schema="schemas/sentinel.evidence.artifact.v1.json"
           module="src/sentinel_core/evidence_artifact.py"
+          regressions="tests/test_evidence_artifact_review_regressions.py"
           report="evidence-artifact-guard-diagnostic.txt"
           : > "$report"
           failed=0
@@ -88,10 +89,14 @@ jobs:
           check_fixed noncanonical_path 'Non-canonical evidence bundle path' "$module"
           check_fixed object_alias 'already-bound filesystem object' "$module"
           check_fixed stable_identity 'Stable filesystem object identity is unavailable; BYTES is blocked' "$module"
+          check_fixed unicode_scalar_guard 'String contains an isolated Unicode surrogate' "$module"
+          check_fixed strict_utf8_decode 'errors="strict"' "$module"
+          check_fixed no_hash_regression 'test_in_memory_surrogates_fail_before_hash' "$regressions"
+          check_fixed escaped_json_regression 'test_json_escaped_surrogates_are_rejected_after_strict_parse' "$regressions"
           check_fixed duplicate_separator '(?!.*//)' "$schema"
-          check_fixed control_character '(?!.*[\\u0000-\\u001F\\u007F])' "$schema"
+          check_fixed control_character '(?!.*[\u0000-\u001F\u007F])' "$schema"
 
-          forbidden='(^|[[:space:]])(requests|httpx|aiohttp|socket|subprocess)[[:space:].]'
+          forbidden='(^|[[:space:]])(requests|httpx|aiohttp|socket|subprocess)[[:space:].|]'
           forbidden+='|private_key|generate_private_key|sign\('
           forbidden+='|publish\(|Save Page Now|pull_request_target'
           if grep -nEiq "$forbidden" "$module"; then
