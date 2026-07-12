@@ -94,13 +94,14 @@ characters, trailing dot or space segments, or DOS device names that the semanti
 verifier rejects.
 
 Schema validity alone does not establish Level 3 `BYTES`. Filesystem identity,
-root confinement, symlink, file type, size, and SHA-256 checks remain mandatory.
+root confinement, secure opening, file type, size, and SHA-256 checks remain
+mandatory.
 
 ## 5. Descriptor-level uniqueness
 
-Before local byte access, every non-null member path must be canonical. During
-Level 3 verification, every member must have a path and no two members may contain
-the same canonical descriptor path.
+Before local byte access, every non-null member path must be canonical. At every
+verification level, no two members may contain the same non-null canonical
+descriptor path. During Level 3 verification, every member must have a path.
 
 String aliases such as `raw/a`, `raw/./a`, and `raw//a` are not three paths. The
 last two are invalid and must not reach filesystem resolution.
@@ -111,19 +112,19 @@ prevents a portable descriptor from naming `raw/file.` while a Windows API binds
 
 ## 6. Filesystem-level uniqueness
 
-Descriptor uniqueness alone is insufficient. After safe resolution beneath the
+Descriptor uniqueness alone is insufficient. After safe opening beneath the
 bundle root, the verifier must also ensure that no two members refer to the same
 local filesystem object.
 
 The identity gate must detect at least:
 
-- identical resolved paths;
+- identical bound paths;
 - aliases caused by case-insensitive filesystems;
 - hard links that share one filesystem identity;
 - platform-specific alternate spellings that resolve to one object.
 
-A second member that resolves to an already-bound path or object fails closed.
-The verifier does not choose one member as authoritative and does not merge them.
+A second member that binds an already-used path or object fails closed. The
+verifier does not choose one member as authoritative and does not merge them.
 
 A stable object identity must come from opened-handle metadata or an equivalent
 platform file-identity API. If a stable identity is unavailable, the verifier must
@@ -132,11 +133,13 @@ It fails closed with `SEA_NOT_VERIFIED`.
 
 ## 7. Symbolic links
 
-The bundle root must not be a symbolic link. No member path component may be a
-symbolic link, including intermediate directories and the final component.
+The bundle root and every member path component are opened component-by-component
+through directory handles with no-follow semantics. Intermediate directories and
+the final member must never be symbolic links.
 
-A path that remains lexically inside the root but traverses a symbolic link is
-invalid even when the symlink target also happens to be inside the root.
+A lexical `is_symlink()` precheck is not sufficient and is not authoritative.
+The no-follow open itself, followed by `fstat()` of the opened handle, establishes
+the file type used for verification.
 
 ## 8. Hard links
 
@@ -147,12 +150,11 @@ ambiguous selective disclosure.
 
 ## 9. Root confinement
 
-Every resolved member must:
+Every opened member must:
 
-- exist;
-- remain beneath the resolved bundle root;
-- be a regular file;
-- be readable through the verifier's bounded local operation;
+- be reached through a directory handle rooted at the supplied bundle root;
+- be opened with no-follow semantics for every component;
+- be a regular file according to `fstat()` on the opened handle;
 - expose stable filesystem object identity for `BYTES`;
 - match the descriptor byte length;
 - match the descriptor SHA-256 value.
@@ -168,11 +170,21 @@ two members to bind one object unnoticed.
 
 A future normalization policy would be a new profile and cannot redefine v1.
 
-## 11. Race boundary
+## 11. Race boundary and secure-open capability
 
-Path validation, symlink checks, resolution, file identity, size, and hashing are
-performed in one local verifier operation. The file is hashed from the opened
-handle whose identity and size are inspected.
+JSON input uses a nonblocking, no-follow file-descriptor open before `fstat()` and
+bounded reading. This prevents a FIFO from blocking before its non-regular type is
+known and prevents a final-component symlink swap from being followed.
+
+Bundle members use component-by-component `openat`-style traversal relative to an
+opened bundle-root directory handle. The bytes, size, regular-file type, and stable
+object identity are all obtained from the same opened final handle.
+
+A platform must provide the equivalent of `O_NOFOLLOW`, `O_DIRECTORY`,
+`O_NONBLOCK`, and directory-relative opening for these file-based verification
+paths. If that capability is absent, the prototype fails closed instead of falling
+back to path prechecks. In-memory `BINDINGS` verification remains a separate path
+and does not imply file or `BYTES` verification.
 
 This substantially narrows replacement races but does not claim protection
 against a hostile privileged kernel or storage administrator. High-assurance
@@ -195,16 +207,19 @@ The v1 suite must cover at least:
 10. segment ending in a space;
 11. case-insensitive DOS device name with and without an extension;
 12. schema and semantic rejection parity;
-13. duplicate canonical descriptor path;
-14. final symbolic link;
-15. intermediate symbolic link;
-16. hard-link alias;
-17. unavailable stable filesystem identity;
-18. missing member path during `BYTES`;
-19. root escape;
-20. missing file;
-21. byte-length mismatch;
-22. SHA-256 mismatch.
+13. duplicate descriptor path at `BINDINGS`;
+14. duplicate descriptor path at `BYTES`;
+15. final symbolic link at JSON input;
+16. FIFO or other non-regular JSON input without blocking;
+17. final symbolic link at bundle-member open;
+18. intermediate symbolic link;
+19. hard-link alias;
+20. unavailable stable filesystem identity;
+21. missing member path during `BYTES`;
+22. root escape;
+23. missing file;
+24. byte-length mismatch;
+25. SHA-256 mismatch.
 
 ## 13. Non-goals
 
