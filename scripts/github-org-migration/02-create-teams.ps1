@@ -11,6 +11,39 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Migration.Common.psm1') -Force
 
+function Get-NamedPropertyValue {
+    param(
+        [Parameter(Mandatory)]$Object,
+        [Parameter(Mandatory)][string]$Name
+    )
+
+    if ($Object -is [System.Collections.IDictionary]) {
+        if ($Object.Contains($Name)) { return $Object[$Name] }
+        return $null
+    }
+    $property = $Object.PSObject.Properties | Where-Object { $_.Name -eq $Name } | Select-Object -First 1
+    if ($property) { return $property.Value }
+    return $null
+}
+
+function Get-RepositoryAssignmentEntries {
+    param($Repositories)
+
+    $entries = [System.Collections.Generic.List[object]]::new()
+    if ($null -eq $Repositories) { return @() }
+    if ($Repositories -is [System.Collections.IDictionary]) {
+        foreach ($key in $Repositories.Keys) {
+            $entries.Add([ordered]@{ name = [string]$key; permission = [string]$Repositories[$key] })
+        }
+    }
+    else {
+        foreach ($property in $Repositories.PSObject.Properties) {
+            $entries.Add([ordered]@{ name = [string]$property.Name; permission = [string]$property.Value })
+        }
+    }
+    return @($entries)
+}
+
 $config = Read-SentinelMigrationConfig -Path $ConfigPath
 $org = [string]$config.target_organization
 $evidenceRoot = if ($OutputDirectory) { $OutputDirectory } else { [string]$config.evidence_root }
@@ -47,7 +80,7 @@ foreach ($team in @($config.teams)) {
 
     $teamAssignment = $null
     if ($assignments -and $assignments.teams) {
-        $teamAssignment = $assignments.teams.PSObject.Properties[$name].Value
+        $teamAssignment = Get-NamedPropertyValue -Object $assignments.teams -Name $name
     }
 
     $plan.teams += [ordered]@{
@@ -112,9 +145,9 @@ foreach ($teamPlan in @($plan.teams)) {
         $actions.Add([ordered]@{ action = 'set_team_membership'; team = $teamPlan.name; login = $login; role = $role; result = 'APPLIED' })
     }
 
-    foreach ($repoProperty in @($teamPlan.repositories.PSObject.Properties)) {
-        $repository = [string]$repoProperty.Name
-        $permission = [string]$repoProperty.Value
+    foreach ($repoAssignment in @(Get-RepositoryAssignmentEntries -Repositories $teamPlan.repositories)) {
+        $repository = [string]$repoAssignment.name
+        $permission = [string]$repoAssignment.permission
         Assert-SafeGitHubName -Value $repository -FieldName 'repository'
         if ($permission -notin @('pull', 'triage', 'push', 'maintain', 'admin')) {
             throw "Unsupported repository permission '$permission'."
