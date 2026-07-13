@@ -18,18 +18,10 @@ $targetOrg = [string]$config.target_organization
 $evidenceRoot = if ($OutputDirectory) { $OutputDirectory } else { [string]$config.evidence_root }
 Assert-SafeGitHubName -Value $RepositoryName -FieldName 'RepositoryName'
 
-if ([bool]$config.allow_bulk_transfer) {
-    throw 'Configuration must keep allow_bulk_transfer=false.'
-}
-if ([bool]$config.allow_paid_plan_changes) {
-    throw 'Configuration must keep allow_paid_plan_changes=false.'
-}
-if ($RepositoryName -notin @($config.repositories)) {
-    throw "Repository '$RepositoryName' is not in the approved migration inventory."
-}
-if ($RepositoryName -in @($config.denied_repositories)) {
-    throw "Repository '$RepositoryName' is explicitly denied for automated transfer."
-}
+if ([bool]$config.allow_bulk_transfer) { throw 'Configuration must keep allow_bulk_transfer=false.' }
+if ([bool]$config.allow_paid_plan_changes) { throw 'Configuration must keep allow_paid_plan_changes=false.' }
+if ($RepositoryName -notin @($config.repositories)) { throw "Repository '$RepositoryName' is not in the approved migration inventory." }
+if ($RepositoryName -in @($config.denied_repositories)) { throw "Repository '$RepositoryName' is explicitly denied for automated transfer." }
 
 $transferIndex = [Array]::IndexOf(@($config.transfer_order), $RepositoryName)
 if ($transferIndex -lt 0) { throw "Repository '$RepositoryName' is absent from transfer_order." }
@@ -47,11 +39,13 @@ $blockers = [System.Collections.Generic.List[string]]::new()
 if (-not $targetOrgResult.available) { $blockers.Add("Target organization '$targetOrg' does not exist or is inaccessible.") }
 if ($targetRepoResult.available) { $blockers.Add("Target repository '$targetOrg/$RepositoryName' already exists.") }
 if ($sourceRepo.archived) { $blockers.Add('Source repository is archived and must be reviewed separately.') }
+if ($sourceRepo.permissions -and -not [bool]$sourceRepo.permissions.admin) { $blockers.Add('Authenticated user is not confirmed as source repository administrator.') }
 if ([bool]$config.require_zero_open_pull_requests_for_transfer -and @($openPulls).Count -gt 0) {
     $blockers.Add("Repository has $(@($openPulls).Count) open pull request(s); configuration requires zero.")
 }
 
 $approval = $null
+$resolvedApprovalPath = $null
 $inventoryRecord = $null
 $bundleRecord = $null
 if (-not $ApprovalFile) {
@@ -59,8 +53,8 @@ if (-not $ApprovalFile) {
 }
 else {
     try {
-        $approvalPath = (Resolve-Path -LiteralPath $ApprovalFile).Path
-        $approval = Get-Content -LiteralPath $approvalPath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 100
+        $resolvedApprovalPath = (Resolve-Path -LiteralPath $ApprovalFile).Path
+        $approval = Get-Content -LiteralPath $resolvedApprovalPath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 100
         if ($approval.schema_version -ne 'sentinel.github-repository-transfer-approval.v1') { $blockers.Add('Approval file schema is invalid.') }
         if ($approval.status -ne 'APPROVED_FOR_SINGLE_TRANSFER') { $blockers.Add('Approval status is not APPROVED_FOR_SINGLE_TRANSFER.') }
         if ($approval.source_full_name -ne "$sourceOwner/$RepositoryName") { $blockers.Add('Approval source_full_name does not match.') }
@@ -71,6 +65,7 @@ else {
 
         $approvers = @($approval.approvers | ForEach-Object { [string]$_ } | Sort-Object -Unique)
         if ($approvers.Count -lt 2) { $blockers.Add('At least two distinct named approvers are required for transfer Apply mode.') }
+        foreach ($approver in $approvers) { Assert-SafeGitHubName -Value $approver -FieldName 'approver login' }
 
         if ($RepositoryName -eq 'upgraded-guacamole' -and $approval.authority_consolidation_complete -ne $true) {
             $blockers.Add('upgraded-guacamole requires authority_consolidation_complete=true in the approval record.')
@@ -95,8 +90,8 @@ else {
                 Assert-ExternalCommand -Name 'git'
                 $bundleRecord = Get-Sha256Record -Path ([string]$approval.bundle_path)
                 if ($bundleRecord.sha256 -ne [string]$approval.bundle_sha256) { $blockers.Add('Bundle SHA-256 does not match the approval.') }
-                & git bundle verify ([string]$approval.bundle_path) 2>&1 | Out-Null
-                if ($LASTEXITCODE -ne 0) { $blockers.Add('Git bundle verification failed.') }
+                $bundleHeads = & git bundle list-heads ([string]$approval.bundle_path) 2>&1
+                if ($LASTEXITCODE -ne 0 -or @($bundleHeads).Count -eq 0) { $blockers.Add('Git bundle format or reference listing validation failed.') }
             }
         }
     }
@@ -106,7 +101,7 @@ else {
 }
 
 for ($i = 0; $i -lt $transferIndex; $i++) {
-    $priorRepo = [string]@($config.transfer_order)[$i]
+    $priorRepo = [string](@($config.transfer_order)[$i])
     $priorTarget = Invoke-GhOptionalJson -Endpoint "repos/$targetOrg/$priorRepo"
     if (-not $priorTarget.available) {
         $blockers.Add("Earlier transfer-order repository '$priorRepo' is not present in the target organization.")
@@ -124,7 +119,7 @@ $preflight = [ordered]@{
     default_branch = $defaultBranch
     exact_head_sha = $headSha
     open_pull_request_count = @($openPulls).Count
-    approval_file = if ($ApprovalFile) { (Resolve-Path -LiteralPath $ApprovalFile -ErrorAction SilentlyContinue).Path } else { $null }
+    approval_file = $resolvedApprovalPath
     inventory_record = $inventoryRecord
     bundle_record = $bundleRecord
     blockers = @($blockers)
@@ -141,17 +136,11 @@ if (-not $Apply) {
     Write-Host "Transfer preflight completed with status $($preflight.status): $preflightPath" -ForegroundColor Green
     return
 }
+if ($blockers.Count -gt 0) { throw "Transfer denied by preflight blockers. See $preflightPath" }
 
-if ($blockers.Count -gt 0) {
-    throw "Transfer denied by preflight blockers. See $preflightPath"
-}
 $expectedConfirmation = "TRANSFER $sourceOwner/$RepositoryName TO $targetOrg"
-if ($Confirmation -cne $expectedConfirmation) {
-    throw "Transfer denied. Confirmation must be exactly: $expectedConfirmation"
-}
-if ($env:SENTINEL_GITHUB_TRANSFER_AUTHORIZED -cne 'YES') {
-    throw 'Transfer denied. SENTINEL_GITHUB_TRANSFER_AUTHORIZED must equal YES.'
-}
+if ($Confirmation -cne $expectedConfirmation) { throw "Transfer denied. Confirmation must be exactly: $expectedConfirmation" }
+if ($env:SENTINEL_GITHUB_TRANSFER_AUTHORIZED -cne 'YES') { throw 'Transfer denied. SENTINEL_GITHUB_TRANSFER_AUTHORIZED must equal YES.' }
 
 $currentUser = Invoke-GhJson -Endpoint 'user'
 $orgMembership = Invoke-GhOptionalJson -Endpoint "orgs/$targetOrg/memberships/$($currentUser.login)"
@@ -159,19 +148,13 @@ if (-not $orgMembership.available -or $orgMembership.value.role -ne 'admin') {
     throw "Authenticated user '$($currentUser.login)' is not confirmed as an owner of '$targetOrg'."
 }
 
-$transferResponse = Invoke-GhJson -Endpoint "repos/$sourceOwner/$RepositoryName/transfer" -Arguments @(
-    '--method', 'POST',
-    '-f', "new_owner=$targetOrg"
-)
+$transferResponse = Invoke-GhJson -Endpoint "repos/$sourceOwner/$RepositoryName/transfer" -Arguments @('--method', 'POST', '-f', "new_owner=$targetOrg")
 
 $targetRepo = $null
 for ($attempt = 1; $attempt -le 24; $attempt++) {
     Start-Sleep -Seconds 5
     $candidate = Invoke-GhOptionalJson -Endpoint "repos/$targetOrg/$RepositoryName"
-    if ($candidate.available) {
-        $targetRepo = $candidate.value
-        break
-    }
+    if ($candidate.available) { $targetRepo = $candidate.value; break }
 }
 if ($null -eq $targetRepo) {
     throw 'GitHub accepted the transfer request, but the target repository was not observable within the verification window. Manual HOLD review is required.'
