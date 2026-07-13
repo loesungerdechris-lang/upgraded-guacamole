@@ -29,22 +29,37 @@ function Read-SentinelMigrationConfig {
     $resolved = (Resolve-Path -LiteralPath $Path).Path
     $config = Get-Content -LiteralPath $resolved -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 100
 
-    if ($config.schema_version -ne 'sentinel.github-org-migration.v1') {
-        throw 'Unsupported migration configuration schema.'
-    }
-    if ($config.status -ne 'HOLD') {
-        throw 'Migration configuration must remain HOLD.'
-    }
+    if ($config.schema_version -ne 'sentinel.github-org-migration.v1') { throw 'Unsupported migration configuration schema.' }
+    if ($config.status -ne 'HOLD') { throw 'Migration configuration must remain HOLD.' }
 
     Assert-SafeGitHubName -Value ([string]$config.source_owner) -FieldName 'source_owner'
     Assert-SafeGitHubName -Value ([string]$config.target_organization) -FieldName 'target_organization'
 
-    if (-not $config.repositories -or @($config.repositories).Count -eq 0) {
-        throw 'At least one repository must be configured.'
-    }
-    foreach ($repo in @($config.repositories) + @($config.denied_repositories)) {
+    $repositories = @($config.repositories)
+    $deniedRepositories = @($config.denied_repositories | Where-Object { $null -ne $_ -and [string]$_ -ne '' })
+    $transferOrder = @($config.transfer_order)
+    if ($repositories.Count -eq 0) { throw 'At least one repository must be configured.' }
+    if ($transferOrder.Count -eq 0) { throw 'transfer_order must contain at least one repository.' }
+
+    foreach ($repo in $repositories + $deniedRepositories + $transferOrder) {
         Assert-SafeGitHubName -Value ([string]$repo) -FieldName 'repository'
     }
+    foreach ($repo in $transferOrder) {
+        if ($repo -notin $repositories) { throw "transfer_order contains repository '$repo' outside repositories." }
+        if ($repo -in $deniedRepositories) { throw "transfer_order contains denied repository '$repo'." }
+    }
+    if (@($transferOrder | Sort-Object -Unique).Count -ne $transferOrder.Count) { throw 'transfer_order contains duplicate repositories.' }
+
+    foreach ($team in @($config.teams)) {
+        Assert-SafeGitHubName -Value ([string]$team.name) -FieldName 'team name'
+    }
+    foreach ($environment in @($config.environments)) {
+        Assert-SafeGitHubName -Value ([string]$environment) -FieldName 'environment name'
+    }
+
+    if ([bool]$config.allow_bulk_transfer) { throw 'allow_bulk_transfer must remain false.' }
+    if ([bool]$config.allow_paid_plan_changes) { throw 'allow_paid_plan_changes must remain false.' }
+    if ([bool]$config.allow_azure_mutation) { throw 'allow_azure_mutation must remain false for this toolkit.' }
 
     return $config
 }
@@ -66,9 +81,7 @@ function Invoke-GhJson {
             throw "GitHub API request failed for '$Endpoint': $message"
         }
         $raw = Get-Content -LiteralPath $stdout -Raw -Encoding UTF8
-        if ([string]::IsNullOrWhiteSpace($raw)) {
-            return $null
-        }
+        if ([string]::IsNullOrWhiteSpace($raw)) { return $null }
         return $raw | ConvertFrom-Json -Depth 100
     }
     finally {
@@ -169,9 +182,10 @@ function New-EvidenceDirectory {
         [Parameter(Mandatory)][string]$Name
     )
 
-    $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
-    $path = Join-Path $Root "$Name-$stamp"
-    New-Item -ItemType Directory -Path $path -Force | Out-Null
+    $stamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ')
+    $nonce = [Guid]::NewGuid().ToString('N').Substring(0, 8)
+    $path = Join-Path $Root "$Name-$stamp-$nonce"
+    New-Item -ItemType Directory -Path $path -ErrorAction Stop | Out-Null
     return (Resolve-Path -LiteralPath $path).Path
 }
 
