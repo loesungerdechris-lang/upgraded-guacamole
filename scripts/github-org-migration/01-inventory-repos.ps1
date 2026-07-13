@@ -151,17 +151,17 @@ foreach ($repository in $repositories) {
         if ($LASTEXITCODE -ne 0) { throw "Mirror clone failed for $sourceOwner/$repository." }
 
         $fsckOutput = & git -C $mirrorPath fsck --full 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "git fsck failed for $sourceOwner/$repository: $fsckOutput" }
+        if ($LASTEXITCODE -ne 0) { throw "git fsck failed for ${sourceOwner}/${repository}: $fsckOutput" }
 
         $refsOutput = & git -C $mirrorPath for-each-ref '--format=%(refname) %(objectname)' 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "Reference inventory failed for $sourceOwner/$repository: $refsOutput" }
+        if ($LASTEXITCODE -ne 0) { throw "Reference inventory failed for ${sourceOwner}/${repository}: $refsOutput" }
         $refsOutput | Set-Content -LiteralPath $refsPath -Encoding UTF8
 
         & git -C $mirrorPath bundle create $bundlePath --all
         if ($LASTEXITCODE -ne 0) { throw "Git bundle creation failed for $sourceOwner/$repository." }
 
         $bundleVerifyOutput = & git -C $mirrorPath bundle verify $bundlePath 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "Git bundle verification failed for $sourceOwner/$repository: $bundleVerifyOutput" }
+        if ($LASTEXITCODE -ne 0) { throw "Git bundle verification failed for ${sourceOwner}/${repository}: $bundleVerifyOutput" }
 
         $backup.requested = $true
         $backup.verified = $true
