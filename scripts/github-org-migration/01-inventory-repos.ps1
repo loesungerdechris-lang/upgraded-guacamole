@@ -94,6 +94,7 @@ foreach ($repository in $repositories) {
             default_branch = $defaultBranch
             default_branch_head_sha = $headSha
             size_kb = $repo.size
+            topics = @($repo.topics)
             created_at = $repo.created_at
             updated_at = $repo.updated_at
             pushed_at = $repo.pushed_at
@@ -106,6 +107,7 @@ foreach ($repository in $repositories) {
             allow_squash_merge = $repo.allow_squash_merge
             allow_rebase_merge = $repo.allow_rebase_merge
             delete_branch_on_merge = $repo.delete_branch_on_merge
+            authenticated_permissions = $repo.permissions
         }
         branches = @($branches | ForEach-Object { [ordered]@{ name = $_.name; sha = $_.commit.sha; protected = $_.protected } })
         tags = @($tags | ForEach-Object { [ordered]@{ name = $_.name; sha = $_.commit.sha } })
@@ -133,12 +135,12 @@ foreach ($repository in $repositories) {
     $inventoryPath = Join-Path $repoEvidence 'repository-inventory.json'
     Write-StableJson -InputObject $inventory -Path $inventoryPath
 
-    $backup = [ordered]@{ requested = [bool]$CreateMirrorBackup; verified = $false; mirror_path = $null; bundle_path = $null; refs_path = $null; fsck = $null }
+    $backup = [ordered]@{ requested = [bool]$CreateMirrorBackup; verified = $false; mirror_path = $null; bundle_path = $null; refs_path = $null; fsck = $null; bundle_verify = $null }
     $evidenceFiles = [System.Collections.Generic.List[object]]::new()
     $evidenceFiles.Add((Get-Sha256Record -Path $inventoryPath))
 
     if ($CreateMirrorBackup) {
-        $backupStamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ')
+        $backupStamp = (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ')
         $repoBackupRoot = Join-Path $backupRoot "$repository-$backupStamp"
         $mirrorPath = Join-Path $repoBackupRoot "$repository.git"
         $bundlePath = Join-Path $repoBackupRoot "$repository.bundle"
@@ -151,14 +153,15 @@ foreach ($repository in $repositories) {
         $fsckOutput = & git -C $mirrorPath fsck --full 2>&1
         if ($LASTEXITCODE -ne 0) { throw "git fsck failed for $sourceOwner/$repository: $fsckOutput" }
 
-        & git -C $mirrorPath for-each-ref '--format=%(refname) %(objectname)' | Set-Content -LiteralPath $refsPath -Encoding UTF8
-        if ($LASTEXITCODE -ne 0) { throw "Reference inventory failed for $sourceOwner/$repository." }
+        $refsOutput = & git -C $mirrorPath for-each-ref '--format=%(refname) %(objectname)' 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "Reference inventory failed for $sourceOwner/$repository: $refsOutput" }
+        $refsOutput | Set-Content -LiteralPath $refsPath -Encoding UTF8
 
         & git -C $mirrorPath bundle create $bundlePath --all
         if ($LASTEXITCODE -ne 0) { throw "Git bundle creation failed for $sourceOwner/$repository." }
 
-        & git bundle verify $bundlePath 2>&1 | Out-Null
-        if ($LASTEXITCODE -ne 0) { throw "Git bundle verification failed for $sourceOwner/$repository." }
+        $bundleVerifyOutput = & git -C $mirrorPath bundle verify $bundlePath 2>&1
+        if ($LASTEXITCODE -ne 0) { throw "Git bundle verification failed for $sourceOwner/$repository: $bundleVerifyOutput" }
 
         $backup.requested = $true
         $backup.verified = $true
@@ -166,6 +169,7 @@ foreach ($repository in $repositories) {
         $backup.bundle_path = (Resolve-Path -LiteralPath $bundlePath).Path
         $backup.refs_path = (Resolve-Path -LiteralPath $refsPath).Path
         $backup.fsck = 'PASS'
+        $backup.bundle_verify = 'PASS'
         $evidenceFiles.Add((Get-Sha256Record -Path $bundlePath))
         $evidenceFiles.Add((Get-Sha256Record -Path $refsPath))
     }
@@ -194,6 +198,6 @@ foreach ($repository in $repositories) {
     }
 }
 
-$runPath = Join-Path $evidenceRoot ("inventory-run-{0}.json" -f (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ'))
+$runPath = Join-Path $evidenceRoot ("inventory-run-{0}.json" -f (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssfffZ'))
 Write-StableJson -InputObject $run -Path $runPath
 Write-Host "Inventory completed under HOLD. Run record: $runPath" -ForegroundColor Green
