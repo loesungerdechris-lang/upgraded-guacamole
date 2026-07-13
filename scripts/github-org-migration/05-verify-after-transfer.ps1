@@ -100,7 +100,11 @@ Add-Check -Name 'source_path_redirect_or_resolution_observable' -Passed ([bool]$
 $blockingFailures = @($checks | Where-Object { -not $_.passed -and $_.severity -eq 'BLOCKER' })
 $reviewFailures = @($checks | Where-Object { -not $_.passed -and $_.severity -eq 'REVIEW' })
 $oidcSubjects = @($config.environments | ForEach-Object {
-    [ordered]@{ environment = [string]$_; expected_subject = "repo:$targetOrg/$RepositoryName:environment:$_"; entra_verification_status = 'NOT_VERIFIED_BY_THIS_SCRIPT' }
+    [ordered]@{
+        environment = [string]$_
+        expected_subject = "repo:${targetOrg}/${RepositoryName}:environment:$($_)"
+        entra_verification_status = 'NOT_VERIFIED_BY_THIS_SCRIPT'
+    }
 })
 
 $result = [ordered]@{
