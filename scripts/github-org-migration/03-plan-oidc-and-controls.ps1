@@ -22,8 +22,8 @@ foreach ($repository in @($config.repositories)) {
         $records.Add([ordered]@{
             repository = [string]$repository
             environment = [string]$environment
-            current_subject = "repo:$sourceOwner/$repository:environment:$environment"
-            proposed_subject = "repo:$targetOrg/$repository:environment:$environment"
+            current_subject = "repo:${sourceOwner}/${repository}:environment:${environment}"
+            proposed_subject = "repo:${targetOrg}/${repository}:environment:${environment}"
             entra_change_required = $true
             old_federation_removal_authorized = $false
         })
