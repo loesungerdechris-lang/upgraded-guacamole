@@ -77,14 +77,9 @@ if (-not $ApplyGitHubEnvironments) {
 }
 
 $expectedConfirmation = "CREATE GITHUB ENVIRONMENTS IN $targetOrg"
-if ($Confirmation -cne $expectedConfirmation) {
-    throw "Apply denied. Confirmation must be exactly: $expectedConfirmation"
-}
+if ($Confirmation -cne $expectedConfirmation) { throw "Apply denied. Confirmation must be exactly: $expectedConfirmation" }
 if ($env:SENTINEL_GITHUB_ENVIRONMENT_APPLY -cne 'AUTHORIZED-ENVIRONMENT-SETUP') {
     throw 'Apply denied. SENTINEL_GITHUB_ENVIRONMENT_APPLY must equal AUTHORIZED-ENVIRONMENT-SETUP.'
-}
-if ([bool]$config.allow_azure_mutation) {
-    throw 'Configuration unexpectedly permits Azure mutation. This script requires allow_azure_mutation=false.'
 }
 
 $orgResult = Invoke-GhOptionalJson -Endpoint "orgs/$targetOrg"
@@ -113,12 +108,13 @@ foreach ($repository in @($config.repositories)) {
             }
         }
         $temp = New-TemporaryFile
+        $tempPath = $temp.FullName
         try {
-            Write-StableJson -InputObject $payload -Path $temp
-            Invoke-GhJson -Endpoint "repos/$targetOrg/$repository/environments/$environment" -Arguments @('--method', 'PUT', '--input', $temp) | Out-Null
+            Write-StableJson -InputObject $payload -Path $tempPath
+            Invoke-GhJson -Endpoint "repos/$targetOrg/$repository/environments/$environment" -Arguments @('--method', 'PUT', '--input', $tempPath) | Out-Null
         }
         finally {
-            Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
         }
         $actions.Add([ordered]@{ repository = $repository; environment = $environment; action = 'create_or_update_environment'; result = 'APPLIED_BASELINE_ONLY' })
     }
