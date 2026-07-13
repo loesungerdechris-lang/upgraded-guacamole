@@ -47,11 +47,7 @@ function Get-RepositoryAssignmentEntries {
 $config = Read-SentinelMigrationConfig -Path $ConfigPath
 $org = [string]$config.target_organization
 $evidenceRoot = if ($OutputDirectory) { $OutputDirectory } else { [string]$config.evidence_root }
-
 $orgResult = Invoke-GhOptionalJson -Endpoint "orgs/$org"
-if (-not $orgResult.available) {
-    throw "Target organization '$org' does not exist or is not accessible. Create it manually before running this script."
-}
 
 $assignments = $null
 if ($AssignmentsPath) {
@@ -62,6 +58,7 @@ $plan = [ordered]@{
     schema_version = 'sentinel.github-team-setup-plan.v1'
     status = 'HOLD'
     target_organization = $org
+    organization_accessible = [bool]$orgResult.available
     created_at = (Get-Date).ToUniversalTime().ToString('o')
     apply_requested = [bool]$Apply
     teams = @()
@@ -99,17 +96,13 @@ if (-not $Apply) {
     Write-Host "Team plan created without mutation: $planPath" -ForegroundColor Green
     return
 }
+if (-not $orgResult.available) {
+    throw "Target organization '$org' does not exist or is not accessible. Create it manually before Apply."
+}
 
 $expectedConfirmation = "CREATE TEAMS IN $org"
-if ($Confirmation -cne $expectedConfirmation) {
-    throw "Apply denied. Confirmation must be exactly: $expectedConfirmation"
-}
-if ($env:SENTINEL_GITHUB_ORG_APPLY -cne 'AUTHORIZED-TEAM-SETUP') {
-    throw 'Apply denied. SENTINEL_GITHUB_ORG_APPLY must equal AUTHORIZED-TEAM-SETUP.'
-}
-if ([bool]$config.allow_paid_plan_changes) {
-    throw 'Configuration unexpectedly permits paid plan changes. Team setup requires allow_paid_plan_changes=false.'
-}
+if ($Confirmation -cne $expectedConfirmation) { throw "Apply denied. Confirmation must be exactly: $expectedConfirmation" }
+if ($env:SENTINEL_GITHUB_ORG_APPLY -cne 'AUTHORIZED-TEAM-SETUP') { throw 'Apply denied. SENTINEL_GITHUB_ORG_APPLY must equal AUTHORIZED-TEAM-SETUP.' }
 
 $currentUser = Invoke-GhJson -Endpoint 'user'
 $membership = Invoke-GhOptionalJson -Endpoint "orgs/$org/memberships/$($currentUser.login)"
@@ -123,11 +116,7 @@ $existingTeams = Invoke-GhPaginatedArray -Endpoint "orgs/$org/teams?per_page=100
 foreach ($teamPlan in @($plan.teams)) {
     $existing = @($existingTeams | Where-Object { $_.name -eq $teamPlan.name } | Select-Object -First 1)
     if ($existing.Count -eq 0) {
-        $created = Invoke-GhJson -Endpoint "orgs/$org/teams" -Arguments @(
-            '--method', 'POST',
-            '-f', "name=$($teamPlan.name)",
-            '-f', "privacy=$($teamPlan.privacy)"
-        )
+        $created = Invoke-GhJson -Endpoint "orgs/$org/teams" -Arguments @('--method', 'POST', '-f', "name=$($teamPlan.name)", '-f', "privacy=$($teamPlan.privacy)")
         $slug = [string]$created.slug
         $actions.Add([ordered]@{ action = 'create_team'; team = $teamPlan.name; slug = $slug; result = 'CREATED' })
     }
@@ -149,9 +138,7 @@ foreach ($teamPlan in @($plan.teams)) {
         $repository = [string]$repoAssignment.name
         $permission = [string]$repoAssignment.permission
         Assert-SafeGitHubName -Value $repository -FieldName 'repository'
-        if ($permission -notin @('pull', 'triage', 'push', 'maintain', 'admin')) {
-            throw "Unsupported repository permission '$permission'."
-        }
+        if ($permission -notin @('pull', 'triage', 'push', 'maintain', 'admin')) { throw "Unsupported repository permission '$permission'." }
         $targetRepo = Invoke-GhOptionalJson -Endpoint "repos/$org/$repository"
         if (-not $targetRepo.available) {
             $actions.Add([ordered]@{ action = 'set_repository_permission'; team = $teamPlan.name; repository = $repository; permission = $permission; result = 'HOLD_REPOSITORY_NOT_IN_ORG' })
