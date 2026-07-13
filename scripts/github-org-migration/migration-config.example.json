@@ -1,0 +1,45 @@
+{
+  "schema_version": "sentinel.github-org-migration.v1",
+  "status": "HOLD",
+  "source_owner": "loesungerdechris-lang",
+  "target_organization": "akira-security-technologies",
+  "repositories": [
+    "sentinel-docs",
+    "sentinel-core",
+    "sentinel-public-ui",
+    "sentinel-evidence-archive",
+    "upgraded-guacamole"
+  ],
+  "denied_repositories": [
+    "azure-sdk-for-net",
+    "The-next-generation"
+  ],
+  "transfer_order": [
+    "sentinel-docs",
+    "sentinel-core",
+    "sentinel-public-ui",
+    "sentinel-evidence-archive",
+    "upgraded-guacamole"
+  ],
+  "teams": [
+    { "name": "sentinel-core-owners", "privacy": "closed" },
+    { "name": "security-reviewers", "privacy": "closed" },
+    { "name": "release-approvers", "privacy": "closed" },
+    { "name": "public-ui-maintainers", "privacy": "closed" },
+    { "name": "documentation-maintainers", "privacy": "closed" },
+    { "name": "evidence-custodians", "privacy": "closed" }
+  ],
+  "environments": [
+    "sentinel-staging",
+    "sentinel-production",
+    "evidence-release",
+    "archive-pilot"
+  ],
+  "evidence_root": "./migration-evidence",
+  "backup_root": "./migration-backups",
+  "require_zero_open_pull_requests_for_transfer": true,
+  "require_verified_mirror_backup": true,
+  "allow_paid_plan_changes": false,
+  "allow_azure_mutation": false,
+  "allow_bulk_transfer": false
+}
