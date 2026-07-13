@@ -18,12 +18,8 @@ Assert-SafeGitHubName -Value $RepositoryName -FieldName 'RepositoryName'
 
 $inventoryPath = (Resolve-Path -LiteralPath $PreflightInventory).Path
 $before = Get-Content -LiteralPath $inventoryPath -Raw -Encoding UTF8 | ConvertFrom-Json -Depth 100
-if ($before.schema_version -ne 'sentinel.github-repository-inventory.v1') {
-    throw 'Preflight inventory schema is invalid.'
-}
-if ($before.repository.full_name -ne "$sourceOwner/$RepositoryName") {
-    throw 'Preflight inventory does not match the configured source repository.'
-}
+if ($before.schema_version -ne 'sentinel.github-repository-inventory.v1') { throw 'Preflight inventory schema is invalid.' }
+if ($before.repository.full_name -ne "$sourceOwner/$RepositoryName") { throw 'Preflight inventory does not match the configured source repository.' }
 
 $targetResult = Invoke-GhOptionalJson -Endpoint "repos/$targetOrg/$RepositoryName"
 if (-not $targetResult.available) { throw "Target repository '$targetOrg/$RepositoryName' is unavailable." }
@@ -46,13 +42,7 @@ $sourceRedirect = Invoke-GhOptionalJson -Endpoint "repos/$sourceOwner/$Repositor
 $checks = [System.Collections.Generic.List[object]]::new()
 function Add-Check {
     param([string]$Name, [bool]$Passed, [object]$BeforeValue, [object]$AfterValue, [string]$Severity = 'BLOCKER')
-    $checks.Add([ordered]@{
-        name = $Name
-        passed = $Passed
-        severity = $Severity
-        before = $BeforeValue
-        after = $AfterValue
-    })
+    $checks.Add([ordered]@{ name = $Name; passed = $Passed; severity = $Severity; before = $BeforeValue; after = $AfterValue })
 }
 
 Add-Check -Name 'repository_id_preserved' -Passed ([string]$before.repository.id -eq [string]$afterRepo.id) -BeforeValue $before.repository.id -AfterValue $afterRepo.id
@@ -92,21 +82,25 @@ $actualEnvironments = if ($afterEnvironments.available -and $afterEnvironments.v
 $environmentMissing = @($expectedEnvironments | Where-Object { $_ -notin $actualEnvironments })
 Add-Check -Name 'required_environments_present' -Passed ($environmentMissing.Count -eq 0) -BeforeValue $expectedEnvironments -AfterValue $actualEnvironments
 
-Add-Check -Name 'rulesets_endpoint_available' -Passed ([bool]$afterRulesets.available) -BeforeValue $before.rulesets.available -AfterValue $afterRulesets.available
-Add-Check -Name 'default_branch_protection_available' -Passed ([bool]$afterProtection.available) -BeforeValue $before.default_branch_protection.available -AfterValue $afterProtection.available
-Add-Check -Name 'hooks_inventory_available' -Passed ([bool]$afterHooks.available) -BeforeValue $before.hooks.Count -AfterValue (if ($afterHooks.available) { @($afterHooks.value).Count } else { $null }) -Severity 'REVIEW'
-Add-Check -Name 'deploy_keys_inventory_available' -Passed ([bool]$afterKeys.available) -BeforeValue $before.deploy_keys.Count -AfterValue (if ($afterKeys.available) { @($afterKeys.value).Count } else { $null }) -Severity 'REVIEW'
+$rulesetsPreserved = (-not [bool]$before.rulesets.available) -or [bool]$afterRulesets.available
+$protectionPreserved = (-not [bool]$before.default_branch_protection.available) -or [bool]$afterProtection.available
+Add-Check -Name 'rulesets_capability_not_lost' -Passed $rulesetsPreserved -BeforeValue $before.rulesets.available -AfterValue $afterRulesets.available
+Add-Check -Name 'default_branch_protection_not_lost' -Passed $protectionPreserved -BeforeValue $before.default_branch_protection.available -AfterValue $afterProtection.available
+
+$afterHookCount = if ($afterHooks.available) { @($afterHooks.value).Count } else { $null }
+$afterKeyCount = if ($afterKeys.available) { @($afterKeys.value).Count } else { $null }
+$sourceResolution = if ($sourceRedirect.available) { [string]$sourceRedirect.value.full_name } else { [string]$sourceRedirect.error }
+$hookParity = $afterHooks.available -and ([int]$before.hooks.Count -eq [int]$afterHookCount)
+$keyParity = $afterKeys.available -and ([int]$before.deploy_keys.Count -eq [int]$afterKeyCount)
+Add-Check -Name 'hook_count_preserved' -Passed $hookParity -BeforeValue $before.hooks.Count -AfterValue $afterHookCount -Severity 'REVIEW'
+Add-Check -Name 'deploy_key_count_preserved' -Passed $keyParity -BeforeValue $before.deploy_keys.Count -AfterValue $afterKeyCount -Severity 'REVIEW'
 Add-Check -Name 'pages_state_observable' -Passed ([bool]$afterPages.available -eq [bool]$before.pages.available) -BeforeValue $before.pages.available -AfterValue $afterPages.available -Severity 'REVIEW'
-Add-Check -Name 'source_path_redirect_or_resolution_observable' -Passed ([bool]$sourceRedirect.available) -BeforeValue "$sourceOwner/$RepositoryName" -AfterValue (if ($sourceRedirect.available) { $sourceRedirect.value.full_name } else { $sourceRedirect.error }) -Severity 'REVIEW'
+Add-Check -Name 'source_path_redirect_or_resolution_observable' -Passed ([bool]$sourceRedirect.available) -BeforeValue "$sourceOwner/$RepositoryName" -AfterValue $sourceResolution -Severity 'REVIEW'
 
 $blockingFailures = @($checks | Where-Object { -not $_.passed -and $_.severity -eq 'BLOCKER' })
 $reviewFailures = @($checks | Where-Object { -not $_.passed -and $_.severity -eq 'REVIEW' })
 $oidcSubjects = @($config.environments | ForEach-Object {
-    [ordered]@{
-        environment = [string]$_
-        expected_subject = "repo:$targetOrg/$RepositoryName:environment:$_"
-        entra_verification_status = 'NOT_VERIFIED_BY_THIS_SCRIPT'
-    }
+    [ordered]@{ environment = [string]$_; expected_subject = "repo:$targetOrg/$RepositoryName:environment:$_"; entra_verification_status = 'NOT_VERIFIED_BY_THIS_SCRIPT' }
 })
 
 $result = [ordered]@{
@@ -136,4 +130,5 @@ $result = [ordered]@{
 $evidenceDirectory = New-EvidenceDirectory -Root $evidenceRoot -Name "$RepositoryName-post-transfer"
 $resultPath = Join-Path $evidenceDirectory 'post-transfer-verification.json'
 Write-StableJson -InputObject $result -Path $resultPath
-Write-Host "Post-transfer verification status $($result.status): $resultPath" -ForegroundColor $(if ($result.status -eq 'HOLD') { 'Yellow' } else { 'Green' })
+$color = if ($result.status -eq 'HOLD') { 'Yellow' } else { 'Green' }
+Write-Host "Post-transfer verification status $($result.status): $resultPath" -ForegroundColor $color
