@@ -12,6 +12,7 @@ _LOCAL_ACTION_RE = re.compile(r"^\./[^\s#]+$")
 _USES_RE = re.compile(
     r"^(?P<indent>\s*)(?P<dash>-\s+)?uses:\s+(?P<value>[^\s#]+)\s*$"
 )
+_WITH_RE = re.compile(r"^(?P<indent>\s*)with:\s*$")
 _PERSIST_RE = re.compile(
     r"^(?P<indent>\s*)persist-credentials:\s+(?P<value>true|false)\s*$"
 )
@@ -94,12 +95,102 @@ def _step_bounds(lines: Sequence[str], uses_index: int) -> tuple[int, int] | Non
     return start, end
 
 
+def _mapping_bounds(lines: Sequence[str], start: int, end: int) -> tuple[int, int]:
+    """Return the content bounds of one exact block-style mapping key."""
+
+    key_indent = _indent(_without_yaml_comment(lines[start]))
+    block_end = end
+    for index in range(start + 1, end):
+        code = _without_yaml_comment(lines[index])
+        if not code.strip():
+            continue
+        if _indent(code) <= key_indent:
+            block_end = index
+            break
+    return start + 1, block_end
+
+
+def _validate_checkout_inputs(
+    lines: Sequence[str],
+    *,
+    source: str,
+    step_start: int,
+    step_end: int,
+    uses_line: int,
+    uses_indent: int,
+) -> list[str]:
+    """Require exactly one false persist-credentials value under checkout with."""
+
+    failures: list[str] = []
+    with_lines: list[int] = []
+    all_persist: list[tuple[int, int, str]] = []
+
+    for index in range(step_start, step_end):
+        code = _without_yaml_comment(lines[index])
+        with_match = _WITH_RE.fullmatch(code)
+        if with_match is not None and len(with_match.group("indent")) == uses_indent:
+            with_lines.append(index)
+        persist_match = _PERSIST_RE.fullmatch(code)
+        if persist_match is not None:
+            all_persist.append(
+                (
+                    index,
+                    len(persist_match.group("indent")),
+                    persist_match.group("value"),
+                )
+            )
+
+    if len(with_lines) != 1:
+        failures.append(
+            f"{source}:{uses_line}: checkout must contain exactly one block-style with mapping"
+        )
+        return failures
+
+    with_line = with_lines[0]
+    content_start, content_end = _mapping_bounds(lines, with_line, step_end)
+    content_lines = [
+        index
+        for index in range(content_start, content_end)
+        if _without_yaml_comment(lines[index]).strip()
+    ]
+    if not content_lines:
+        failures.append(
+            f"{source}:{uses_line}: checkout with mapping must contain persist-credentials: false"
+        )
+        return failures
+
+    first_level_indent = min(
+        _indent(_without_yaml_comment(lines[index])) for index in content_lines
+    )
+    direct_persist = [
+        (index, value)
+        for index, indent, value in all_persist
+        if content_start <= index < content_end and indent == first_level_indent
+    ]
+    outside_persist = [
+        index
+        for index, _, _ in all_persist
+        if not (content_start <= index < content_end)
+    ]
+
+    if outside_persist:
+        failures.append(
+            f"{source}:{outside_persist[0] + 1}: persist-credentials must be inside checkout with"
+        )
+    if len(direct_persist) != 1 or direct_persist[0][1] != "false":
+        failures.append(
+            f"{source}:{uses_line}: checkout must set persist-credentials: false exactly once "
+            "as a direct with input"
+        )
+    return failures
+
+
 def validate_workflow_text(text: str, *, source: str = "<memory>") -> list[str]:
     """Return all fail-closed workflow validation errors."""
 
     lines = text.splitlines()
     failures: list[str] = []
-    allowed_uses: list[tuple[int, re.Match[str]]] = []
+    allowed_uses: list[int] = []
 
     for index, raw_line in enumerate(lines, start=1):
         code = _without_yaml_comment(raw_line)
@@ -114,7 +205,7 @@ def validate_workflow_text(text: str, *, source: str = "<memory>") -> list[str]:
             )
         elif uses_match is not None:
             value = uses_match.group("value")
-            allowed_uses.append((index - 1, uses_match))
+            allowed_uses.append(index - 1)
             if value.startswith("./"):
                 if _LOCAL_ACTION_RE.fullmatch(value) is None:
                     failures.append(f"{source}:{index}: invalid local action path: {value}")
@@ -131,43 +222,43 @@ def validate_workflow_text(text: str, *, source: str = "<memory>") -> list[str]:
             )
 
     checked_steps: set[tuple[int, int]] = set()
-    for uses_index, uses_match in allowed_uses:
+    for uses_index in allowed_uses:
         bounds = _step_bounds(lines, uses_index)
-        if bounds is None:
-            continue
-        if bounds in checked_steps:
+        if bounds is None or bounds in checked_steps:
             continue
         checked_steps.add(bounds)
         start, end = bounds
-        step_uses: list[tuple[int, str]] = []
-        persist_values: list[tuple[int, str]] = []
+        step_uses: list[tuple[int, int, str]] = []
 
         for block_index in range(start, end):
             code = _without_yaml_comment(lines[block_index])
             block_uses = _USES_RE.fullmatch(code)
             if block_uses is not None:
-                step_uses.append((block_index + 1, block_uses.group("value")))
-            block_persist = _PERSIST_RE.fullmatch(code)
-            if block_persist is not None:
-                persist_values.append((block_index + 1, block_persist.group("value")))
+                step_uses.append(
+                    (
+                        block_index + 1,
+                        len(block_uses.group("indent")),
+                        block_uses.group("value"),
+                    )
+                )
 
         if len(step_uses) > 1:
-            locations = ", ".join(str(line) for line, _ in step_uses)
+            locations = ", ".join(str(line) for line, _, _ in step_uses)
             failures.append(f"{source}:{locations}: step contains duplicate uses keys")
 
-        for uses_line, value in step_uses:
+        for uses_line, uses_indent, value in step_uses:
             if _CHECKOUT_RE.fullmatch(value) is None:
                 continue
-            false_values = [line for line, item in persist_values if item == "false"]
-            true_values = [line for line, item in persist_values if item == "true"]
-            if true_values:
-                failures.append(
-                    f"{source}:{true_values[0]}: checkout must not persist credentials"
+            failures.extend(
+                _validate_checkout_inputs(
+                    lines,
+                    source=source,
+                    step_start=start,
+                    step_end=end,
+                    uses_line=uses_line,
+                    uses_indent=uses_indent,
                 )
-            if len(false_values) != 1:
-                failures.append(
-                    f"{source}:{uses_line}: checkout must set persist-credentials: false exactly once"
-                )
+            )
 
     return failures
 
