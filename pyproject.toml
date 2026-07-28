@@ -33,6 +33,11 @@ where = ["src"]
 line-length = 100
 src = ["src", "tests"]
 
+[tool.ruff.lint.per-file-ignores]
+# Narrow compatibility waivers only; no security or verifier rule is disabled globally.
+"src/sentinel_core/receipt.py" = ["UP017"]
+"tests/test_receipt_verifier.py" = ["UP012"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

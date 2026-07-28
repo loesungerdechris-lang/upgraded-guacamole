@@ -1,0 +1,204 @@
+name: SENTINEL Zero-Trust Release Gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sentinel-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-gate:
+    name: release-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout immutable source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify release ref is bound to main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin main
+
+          case "${GITHUB_REF}" in
+            refs/heads/main)
+              ;;
+            refs/pull/*)
+              ;;
+            refs/tags/*)
+              tag="${GITHUB_REF#refs/tags/}"
+              if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "Release tag must match vMAJOR.MINOR.PATCH: $tag"
+                exit 1
+              fi
+              if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+                echo "Release commit is not reachable from origin/main."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "Unsupported ref: ${GITHUB_REF}"
+              exit 1
+              ;;
+          esac
+
+      - name: Validate immutable workflow dependencies
+        run: PYTHONPATH=src python -m sentinel_core.workflow_security .github/workflows
+
+      - name: Reject private material and local secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          forbidden=$(find . -type f \
+            \( -name '*.pem' \
+              -o -name '*.key' \
+              -o -name '*.pfx' \
+              -o -name '*.p12' \
+              -o -name '*.private.jwk' \
+              -o -name '.env' \
+              -o -path '*/.sentinel/private/*' \) \
+            -not -path './.git/*' || true)
+          if [ -n "$forbidden" ]; then
+            echo "Forbidden private or secret-like files found:"
+            echo "$forbidden"
+            exit 1
+          fi
+
+      - name: Validate tracked JSON documents
+        shell: python
+        run: |
+          import json
+          import subprocess
+          from pathlib import Path
+
+          tracked = subprocess.check_output(
+              ['git', 'ls-files', '*.json'], text=True
+          ).splitlines()
+          for raw_path in tracked:
+              path = Path(raw_path)
+              with path.open('r', encoding='utf-8') as handle:
+                  json.load(handle)
+              print(f'valid json: {path}')
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python package and developer tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Run Python lint and full test suite
+        run: |
+          ruff check src tests
+          pytest -q
+
+      - name: Run receipt-verifier red-team suite explicitly
+        run: pytest -q tests/test_receipt_verifier.py
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.23.10"
+          cache: true
+
+      - name: Run Go formatting, tests, and reproducible build
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(gofmt -l cmd internal)"
+          go test ./...
+          mkdir -p "$RUNNER_TEMP/sentinel-release"
+          CGO_ENABLED=0 go build \
+            -trimpath \
+            -ldflags="-buildid=" \
+            -o "$RUNNER_TEMP/sentinel-release/sentinel" \
+            ./cmd/sentinel
+
+      - name: Generate immutable release evidence manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          evidence_dir="$RUNNER_TEMP/sentinel-release"
+          mkdir -p "$evidence_dir"
+
+          python -m sentinel_core.release_evidence \
+            --repo-root . \
+            --output "$evidence_dir/tracked-files.sha256.json"
+
+          sha256sum -- "$evidence_dir/sentinel" \
+            > "$evidence_dir/sentinel.sha256"
+
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          root = Path(os.environ['RUNNER_TEMP']) / 'sentinel-release'
+          tracked_manifest = root / 'tracked-files.sha256.json'
+          binary_manifest = root / 'sentinel.sha256'
+
+          def sha256(path: Path) -> str:
+              digest = hashlib.sha256()
+              with path.open('rb') as handle:
+                  for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+                      digest.update(chunk)
+              return digest.hexdigest()
+
+          manifest = {
+              'schema_version': 'sentinel-release-evidence-v1',
+              'repository': os.environ['GITHUB_REPOSITORY'],
+              'commit_sha': os.environ['GITHUB_SHA'],
+              'ref': os.environ['GITHUB_REF'],
+              'run_id': os.environ['GITHUB_RUN_ID'],
+              'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
+              'created_utc': datetime.now(UTC).isoformat().replace('+00:00', 'Z'),
+              'tracked_files_manifest_sha256': sha256(tracked_manifest),
+              'binary_manifest_sha256': sha256(binary_manifest),
+              'release_authority': 'NONE_VALIDATION_ONLY',
+              'canonical_write_allowed': False,
+              'result': 'CANDIDATE_VALIDATED',
+          }
+          output = root / 'release-evidence.json'
+          output.write_text(
+              json.dumps(manifest, indent=2, sort_keys=True) + '\n',
+              encoding='utf-8',
+          )
+          print(output.read_text(encoding='utf-8'))
+          PY
+
+      - name: Verify repository remained unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "$(git status --porcelain)" ]; then
+            git status --short
+            echo "The release gate modified the checked-out repository."
+            exit 1
+          fi
+
+      - name: Final fail-closed result
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "CANDIDATE_VALIDATED"
+          echo "This workflow validates a candidate only."
+          echo "It does not create a release, sign an artifact, deploy code, or bypass human approval."

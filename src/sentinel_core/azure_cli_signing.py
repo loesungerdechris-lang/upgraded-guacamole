@@ -11,8 +11,9 @@ import base64
 import json
 import re
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import urlparse
 
 from sentinel_core.external_signing import DigestSigningRequest, ExternalSignatureResult
@@ -141,11 +142,11 @@ class AzureCliKeyVaultDigestSigner:
             self.timeout_seconds,
             bool,
         ):
-            raise ValueError("timeout_seconds must be numeric")
+            raise TypeError("timeout_seconds must be numeric")
         if not 0 < float(self.timeout_seconds) <= 120:
             raise ValueError("timeout_seconds must be greater than zero and at most 120")
         if not callable(self.runner):
-            raise ValueError("runner must be callable")
+            raise TypeError("runner must be callable")
 
     def sign_digest(self, request: DigestSigningRequest) -> ExternalSignatureResult:
         """Sign one validated SHA-256 digest with the exact versioned Key Vault key."""
