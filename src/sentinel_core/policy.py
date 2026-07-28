@@ -24,11 +24,9 @@ class PolicyRule:
     def allows(self, *, decision: str, source: str) -> bool:
         """Return whether this rule allows a decision from a source."""
 
-        if decision not in self.allowed_decisions:
-            return False
-        if self.allowed_sources and source not in self.allowed_sources:
-            return False
-        return True
+        return decision in self.allowed_decisions and (
+            not self.allowed_sources or source in self.allowed_sources
+        )
 
 
 @dataclass(frozen=True)
