@@ -57,59 +57,7 @@ jobs:
           esac
 
       - name: Validate immutable workflow dependencies
-        shell: python
-        run: |
-          from __future__ import annotations
-
-          import re
-          from pathlib import Path
-
-          workflow_paths = sorted(Path('.github/workflows').glob('*.y*ml'))
-          uses_pattern = re.compile(r'^\s*(?:-\s*)?uses:\s*([^\s#]+)')
-          immutable_remote = re.compile(r'^[^@\s]+@[0-9a-fA-F]{40}$')
-          checkout_action = re.compile(r'^actions/checkout@[0-9a-fA-F]{40}$')
-          failures: list[str] = []
-
-          for path in workflow_paths:
-              lines = path.read_text(encoding='utf-8').splitlines()
-              for index, line in enumerate(lines):
-                  match = uses_pattern.match(line)
-                  if match is None:
-                      continue
-
-                  action = match.group(1)
-                  if action.startswith('./'):
-                      continue
-                  if immutable_remote.fullmatch(action) is None:
-                      failures.append(
-                          f'{path}:{index + 1}: remote action is not pinned to a 40-hex commit: {action}'
-                      )
-                      continue
-
-                  if checkout_action.fullmatch(action) is None:
-                      continue
-
-                  indent = len(line) - len(line.lstrip())
-                  step_tail: list[str] = []
-                  for candidate in lines[index + 1:]:
-                      stripped = candidate.lstrip()
-                      candidate_indent = len(candidate) - len(stripped)
-                      if stripped.startswith('- ') and candidate_indent <= indent:
-                          break
-                      step_tail.append(candidate)
-
-                  if not any(
-                      re.match(r'^\s*persist-credentials:\s*false\s*(?:#.*)?$', candidate)
-                      for candidate in step_tail
-                  ):
-                      failures.append(
-                          f'{path}:{index + 1}: checkout must set persist-credentials: false'
-                      )
-
-          if failures:
-              raise SystemExit('\n'.join(failures))
-
-          print(f'validated {len(workflow_paths)} workflow files')
+        run: PYTHONPATH=src python -m sentinel_core.workflow_security .github/workflows
 
       - name: Reject private material and local secrets
         shell: bash
@@ -190,23 +138,22 @@ jobs:
           evidence_dir="$RUNNER_TEMP/sentinel-release"
           mkdir -p "$evidence_dir"
 
-          git ls-files -z \
-            | sort -z \
-            | xargs -0 sha256sum \
-            > "$evidence_dir/tracked-files.sha256"
+          python -m sentinel_core.release_evidence \
+            --repo-root . \
+            --output "$evidence_dir/tracked-files.sha256.json"
 
-          sha256sum "$evidence_dir/sentinel" \
+          sha256sum -- "$evidence_dir/sentinel" \
             > "$evidence_dir/sentinel.sha256"
 
           python - <<'PY'
           import hashlib
           import json
           import os
-          from datetime import datetime, timezone
+          from datetime import UTC, datetime
           from pathlib import Path
 
           root = Path(os.environ['RUNNER_TEMP']) / 'sentinel-release'
-          tracked_manifest = root / 'tracked-files.sha256'
+          tracked_manifest = root / 'tracked-files.sha256.json'
           binary_manifest = root / 'sentinel.sha256'
 
           def sha256(path: Path) -> str:
@@ -223,12 +170,12 @@ jobs:
               'ref': os.environ['GITHUB_REF'],
               'run_id': os.environ['GITHUB_RUN_ID'],
               'run_attempt': os.environ['GITHUB_RUN_ATTEMPT'],
-              'created_utc': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+              'created_utc': datetime.now(UTC).isoformat().replace('+00:00', 'Z'),
               'tracked_files_manifest_sha256': sha256(tracked_manifest),
               'binary_manifest_sha256': sha256(binary_manifest),
               'release_authority': 'NONE_VALIDATION_ONLY',
               'canonical_write_allowed': False,
-              'result': 'RC_VERIFIED',
+              'result': 'CANDIDATE_VALIDATED',
           }
           output = root / 'release-evidence.json'
           output.write_text(
@@ -252,6 +199,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          echo "RC_VERIFIED"
+          echo "CANDIDATE_VALIDATED"
           echo "This workflow validates a candidate only."
           echo "It does not create a release, sign an artifact, deploy code, or bypass human approval."
