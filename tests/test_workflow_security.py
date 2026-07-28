@@ -31,6 +31,7 @@ def test_accepts_pinned_checkout_with_credentials_disabled() -> None:
                   - name: Checkout
                     uses: actions/checkout@{CHECKOUT_SHA}
                     with:
+                      fetch-depth: 0
                       persist-credentials: false
             """
         )
@@ -98,6 +99,35 @@ def test_rejects_checkout_credential_bypass(with_block: str) -> None:
     )
     failures = validate_workflow_text(text)
     assert failures
+
+
+def test_rejects_persist_credentials_under_env() -> None:
+    text = _workflow(
+        dedent(
+            f"""
+                  - uses: actions/checkout@{CHECKOUT_SHA}
+                    env:
+                      persist-credentials: false
+            """
+        )
+    )
+    failures = validate_workflow_text(text)
+    assert any("with mapping" in failure for failure in failures)
+
+
+def test_rejects_nested_persist_credentials_inside_with() -> None:
+    text = _workflow(
+        dedent(
+            f"""
+                  - uses: actions/checkout@{CHECKOUT_SHA}
+                    with:
+                      env:
+                        persist-credentials: false
+            """
+        )
+    )
+    failures = validate_workflow_text(text)
+    assert any("direct with input" in failure for failure in failures)
 
 
 def test_ignores_uses_text_inside_yaml_comment() -> None:
