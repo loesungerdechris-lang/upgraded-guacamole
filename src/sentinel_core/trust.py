@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 KeyStatus = Literal["active", "revoked", "expired"]
@@ -41,7 +41,7 @@ def parse_rfc3339_utc(value: str) -> datetime:
         raise TrustRegistryError(f"invalid RFC3339 timestamp: {value}") from exc
     if parsed.tzinfo is None:
         raise TrustRegistryError(f"timestamp must include timezone: {value}")
-    return parsed.astimezone(timezone.utc)
+    return parsed.astimezone(UTC)
 
 
 class TrustRegistry:
