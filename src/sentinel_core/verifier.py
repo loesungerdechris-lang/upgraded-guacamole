@@ -78,7 +78,7 @@ def verify_evidence_record(
 
     try:
         digest = compute_chain_link(record).digest
-    except Exception as exc:  # pragma: no cover - defensive boundary
+    except Exception as exc:  # noqa: BLE001  # pragma: no cover - fail-closed boundary
         errors.append(f"digest computation failed: {exc}")
 
     if expected_digest is not None and digest != expected_digest:
