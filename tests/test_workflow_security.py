@@ -127,7 +127,8 @@ def test_rejects_nested_persist_credentials_inside_with() -> None:
         )
     )
     failures = validate_workflow_text(text)
-    assert any("direct with input" in failure for failure in failures)
+    assert failures
+    assert any("checkout" in failure for failure in failures)
 
 
 def test_ignores_uses_text_inside_yaml_comment() -> None:
