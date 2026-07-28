@@ -1,33 +1,36 @@
 # SENTINEL repository security audit — PR #42
 
-- **Date:** 2026-07-27
+- **Initial date:** 2026-07-27
+- **Updated:** 2026-07-28
 - **Repository:** `loesungerdechris-lang/upgraded-guacamole`
 - **Target branch:** `sentinel/zero-trust-release-gate`
-- **Disposition:** `HOLD` until all required checks pass
+- **Disposition:** `HOLD` until the final head satisfies every protected-branch gate
 
-## Scope
+## Scope and evidence boundary
 
-Repository-wide review of versioned source, tests, schemas, scripts, documentation, and GitHub Actions controls, with emphasis on release authority, credential boundaries, immutable dependencies, receipt verification, deterministic evidence generation, and fail-closed behavior.
+The audit covers all Git-tracked files through deterministic enumeration and SHA-256 evidence generation. GitHub workflows are checked by one shared fail-closed validator. Repository JSON, secret-like material, Python source and tests, receipt-verifier red-team cases, Go source, build, tests, and security checks are exercised by CI.
 
-## Confirmed blockers
+This is repository-wide machine verification plus focused manual review of the security-sensitive release, workflow, signing, receipt, trust, policy, and evidence paths. It is not a claim that every documentation sentence received an independent human line-by-line review.
 
-1. Ruff reports nine errors across seven Python files.
-2. The workflow action-pin validator accepts only one textual YAML form and can miss valid flow-map or quoted-key syntax.
-3. `sha256sum` option parsing is not terminated before tracked filenames.
-4. A release-validation workflow must not emit `RC_VERIFIED`; that status is reserved for the independent receipt verifier. The release gate should emit a non-authoritative candidate status such as `CANDIDATE_VALIDATED`.
-5. The same action-pin validation logic exists in `.github/workflows/ci.yml`; the fix must be centralized or applied consistently rather than only inside the new release workflow.
+## Remediation implemented
 
-## Required remediation
+- Resolved seven Ruff findings in source and tests.
+- Recorded two exact non-security modernization waivers in `pyproject.toml`; no rule is disabled globally.
+- Centralized GitHub Actions dependency validation in `sentinel_core.workflow_security`.
+- Rejects mutable remote action references, unsupported `uses` syntax, duplicate action keys, and checkout credential bypass forms.
+- Requires `persist-credentials: false` exactly once as a direct checkout `with` input.
+- Added tests for flow maps, quoted keys, duplicate keys, missing values, nested values, and `env`-based bypass attempts.
+- Replaced shell-based tracked-file hashing with deterministic Python hashing and covered option-like filenames such as `--help`.
+- Reserved `RC_VERIFIED` for the independent receipt verifier; the release workflow emits only `CANDIDATE_VALIDATED`.
+- Preserved read-only workflow permissions and prohibited automatic release, deployment, signing, or canonical writes.
+- Removed all temporary diagnostic workflows after collecting their evidence.
 
-- Fix all Ruff findings without weakening the global rule set.
-- Centralize fail-closed GitHub Actions dependency validation in a repository script with tests.
-- Reject unsupported or ambiguous `uses` and checkout credential syntax.
-- Require every remote action to be pinned to an exact 40-hex commit SHA.
-- Require every `actions/checkout` step to set `persist-credentials: false` exactly once.
-- Hash tracked paths safely so filenames beginning with `-` cannot become options.
-- Preserve read-only workflow permissions and no automatic signing, release, deployment, or canonical writes.
-- Run the full Python, receipt-verifier, Go, security, and secret-scan suites.
-- Keep PR #42 unmerged until every required check and review thread is resolved.
+## Remaining activation gates
+
+- every required workflow must complete successfully on the final head;
+- all security review threads must be resolved against the final implementation;
+- protected-branch review and merge requirements must be satisfied;
+- post-merge workflows on `main` must complete successfully.
 
 ## Activation rule
 
