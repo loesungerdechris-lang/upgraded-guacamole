@@ -1,0 +1,75 @@
+name: SENTINEL Gemma 4 Gateway
+
+on:
+  pull_request:
+    branches: ["main"]
+    paths:
+      - 'src/sentinel_core/gemma4_gateway.py'
+      - 'tests/test_gemma4_gateway.py'
+      - 'docs/gemma4-local-gateway-security-gate.md'
+      - 'pyproject.toml'
+      - '.github/workflows/sentinel-gemma4-gateway.yml'
+  push:
+    branches: ["main"]
+    paths:
+      - 'src/sentinel_core/gemma4_gateway.py'
+      - 'tests/test_gemma4_gateway.py'
+      - 'docs/gemma4-local-gateway-security-gate.md'
+      - 'pyproject.toml'
+      - '.github/workflows/sentinel-gemma4-gateway.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gemma4-gateway:
+    name: gemma4-gateway
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Install offline test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+          python -m pip install 'fastapi>=0.115.0' 'httpx>=0.28.0'
+
+      - name: Guard credentials, authority, and execution boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_file='src/sentinel_core/gemma4_gateway.py'
+
+          forbidden='(sk-[A-Za-z0-9]{16,}|hf_[A-Za-z0-9]{16,}|BEGIN .*PRIVATE KEY|shell[[:space:]]*=[[:space:]]*True|\beval\(|\bexec\(|\bglobals\()'
+          if grep -niE "$forbidden" "$source_file"; then
+            echo 'A credential literal, private key, shell, or dynamic execution primitive entered the Gemma 4 gateway.' >&2
+            exit 1
+          fi
+
+          grep -F '"authoritative": False' "$source_file"
+          grep -F '"tool_execution": False' "$source_file"
+          grep -F '"receipt_created": False' "$source_file"
+          grep -F 'remote binding is disabled' "$source_file"
+          grep -F 'images must be base64 data URLs' "$source_file"
+          grep -F 'model requested undeclared tool' "$source_file"
+          grep -F 'assistant_model_id must be omitted or exactly' "$source_file"
+
+      - name: Compile
+        run: python -m compileall -q src tests
+
+      - name: Lint
+        run: ruff check src tests
+
+      - name: Run Gemma 4 gateway offline tests
+        run: pytest -q tests/test_gemma4_gateway.py
