@@ -29,6 +29,14 @@ The client sends `session.update`, waits for `session.updated`, then sends `conv
 
 The public xAI Voice Agent API documentation did not document an `agent_id` query parameter when this boundary was implemented on 2026-07-11. The client therefore rejects `agent_id` by default. An operator may enable the parameter only through the explicit `--allow-undocumented-agent-id` switch for a controlled compatibility test. That switch is not a production approval.
 
+## Invariant instruction boundary
+
+`VoiceSessionConfig.instructions` is application context, not a caller-replaceable system prompt. Every construction path — CLI file input, direct library use, reconnect, and `session.update` — calls the same client-side composition function.
+
+The final prompt always contains the immutable SENTINEL non-authoritative boundary before and after subordinate application text. Application text is Unicode-normalized and case-folded for conservative override detection. Suspected attempts to ignore, bypass, weaken, or contradict the boundary fail during configuration before any network request is made.
+
+The pattern check is only defense in depth. The primary security property is structural: the caller cannot supply the final WebSocket instruction value directly, and `session.update` accepts only the client-composed effective instructions.
+
 ## Authentication boundary
 
 - `XAI_API_KEY` is read only from the process environment.
@@ -64,6 +72,8 @@ The client:
 - disables WebSocket compression;
 - does not automatically replay a turn after an ambiguous send failure;
 - stores only mono PCM16 little-endian WAV data at the configured sample rate.
+
+Transcript accumulation accepts the xAI-native and compatibility event names `response.text.delta`, `response.output_text.delta`, and `response.output_audio_transcript.delta`. A text event may use the documented `delta` field or a compatible `text` field, but conflicting values fail closed. Every accepted text fragment passes active-response lifecycle validation and the configured UTF-8 byte limit before it is emitted live, returned in `VoiceResponse.transcript`, or persisted.
 
 No operating-system media player is spawned. This avoids command injection, unexpected child processes, and platform-specific playback behavior inside the trusted client.
 
@@ -113,6 +123,8 @@ Install the isolated optional dependency:
 python -m pip install -e .[dev,voice]
 ```
 
+The development extra pins Ruff to the exact version proven by the reviewed CI baseline. Tool upgrades require an explicit, separately reviewed change rather than floating into an unrelated security PR.
+
 Run a non-recording text smoke test after `XAI_API_KEY` has been injected through the local secret-management process:
 
 ```bash
@@ -143,10 +155,14 @@ Do not place the concrete hosted agent ID in source control.
 
 ```bash
 ruff check src tests
-pytest -q tests/test_xai_voice.py
+pytest -q \
+  tests/test_xai_voice.py \
+  tests/test_xai_voice_review_regressions.py
 ```
 
 The dedicated GitHub Actions workflow installs the voice extra, applies static boundary checks, imports the runtime dependency, and executes the offline tests. It performs no live xAI request and requires no API secret.
+
+Regression coverage proves that programmatic application instructions cannot replace the invariant boundary; Unicode and whitespace override variants are rejected; documented text-delta aliases are accumulated and emitted; and pre-response, oversized, malformed, or conflicting text events close and clear the authenticated WebSocket without emitting unaccepted text.
 
 ## Live activation gate
 
