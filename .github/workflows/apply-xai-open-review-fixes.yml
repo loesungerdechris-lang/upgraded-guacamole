@@ -7,12 +7,22 @@ on:
       - 'scripts/apply_xai_open_review_fixes.py'
       - 'scripts/finalize_xai_open_review_fixes.py'
       - '.github/workflows/apply-xai-open-review-fixes.yml'
+  pull_request:
+    branches: ["main"]
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'src/sentinel_core/xai_voice.py'
+      - 'tests/test_xai_voice.py'
+      - 'tests/test_xai_voice_review_regressions.py'
+      - 'scripts/apply_xai_open_review_fixes.py'
+      - 'scripts/finalize_xai_open_review_fixes.py'
+      - '.github/workflows/apply-xai-open-review-fixes.yml'
 
 permissions:
   contents: write
 
 concurrency:
-  group: apply-xai-open-review-fixes
+  group: apply-xai-open-review-fixes-${{ github.event_name }}
   cancel-in-progress: false
 
 jobs:
@@ -33,7 +43,8 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Verify branch head has not moved
+      - name: Verify push head has not moved
+        if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
@@ -73,6 +84,7 @@ jobs:
             tests/test_xai_voice_review_regressions.py
 
       - name: Commit verified patch
+        if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
