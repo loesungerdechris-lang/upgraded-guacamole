@@ -1,4 +1,9 @@
-from sentinel_core.hashchain import ZERO_HASH, compute_chain_link, sha256_prefixed, verify_previous_hash
+from sentinel_core.hashchain import (
+    ZERO_HASH,
+    compute_chain_link,
+    sha256_prefixed,
+    verify_previous_hash,
+)
 
 
 def test_sha256_prefixed_is_stable() -> None:
