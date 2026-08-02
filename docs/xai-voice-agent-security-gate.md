@@ -22,10 +22,10 @@ The voice model must never create or imply a receipt, signature, consent record,
 The default connection uses only the public xAI Voice Agent API model parameter:
 
 ```text
-wss://api.x.ai/v1/realtime?model=grok-voice-latest
+wss://api.x.ai/v1/realtime?model=grok-voice-think-fast-1.0
 ```
 
-The client sends `session.update`, waits for `session.updated`, then sends `conversation.item.create` followed by `response.create`. It consumes the documented response lifecycle and finalizes a response only at `response.done`.
+The client sends `session.update`, waits for `session.updated`, then sends `conversation.item.create` followed by `response.create`. It consumes the documented response lifecycle and finalizes a response only at `response.done`. The default model is version-pinned because the official `grok-voice-latest` alias is scheduled to change; an alias or newer model requires a separate controlled compatibility test.
 
 The public xAI Voice Agent API documentation did not document an `agent_id` query parameter when this boundary was implemented on 2026-07-11. The client therefore rejects `agent_id` by default. An operator may enable the parameter only through the explicit `--allow-undocumented-agent-id` switch for a controlled compatibility test. That switch is not a production approval.
 
@@ -67,6 +67,7 @@ The client:
 - limits individual JSON events to 2 MiB by default;
 - limits one response to 64 MiB of decoded audio by default;
 - rejects malformed UTF-8, JSON, base64, PCM16, and response lifecycle events;
+- accepts both the canonical `response.output_audio.delta` event and the documented `response.audio.delta` compatibility alias through the same bounded audio path;
 - waits for `session.updated` before sending a user turn;
 - uses explicit receive and connection timeouts;
 - disables WebSocket compression;
@@ -98,7 +99,7 @@ It is local integrity metadata only. It is not signed, not a SENTINEL receipt, a
 
 Session resumption is opt-in. When enabled, the client captures the server-provided conversation ID and may use it for a later connection. The ID is held only in process memory by this implementation.
 
-The client does not automatically retry a user turn when delivery is ambiguous. This prevents duplicate model responses, duplicate tool calls, duplicate costs, and duplicate external actions. A new turn may be sent only after the previous `response.done` was received or an operator deliberately restarts the interaction.
+The client does not automatically retry a user turn when delivery is ambiguous. This prevents duplicate model responses, duplicate tool calls, duplicate costs, and duplicate external actions. Any connection, send, parsing, protocol, or response-lifecycle failure also clears the in-memory resumption identifier before reconnect, so cached ambiguous state cannot be resumed automatically. A new turn may be sent only after the previous `response.done` was received or an operator deliberately starts a fresh interaction.
 
 ## Tool-use boundary
 

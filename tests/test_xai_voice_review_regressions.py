@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import os
 from pathlib import Path
@@ -172,6 +173,26 @@ def test_documented_text_deltas_are_collected_and_emitted(
     assert websocket.closed is False
 
 
+def test_response_audio_delta_alias_is_collected() -> None:
+    pcm = b"\x00\x00\x01\x00"
+    websocket = _FakeWebSocket(
+        [
+            {"type": "response.created", "response": {"id": "resp_audio_alias"}},
+            {
+                "type": "response.audio.delta",
+                "delta": base64.b64encode(pcm).decode("ascii"),
+            },
+            {"type": "response.done", "response": {"status": "completed"}},
+        ]
+    )
+    client = _ready_client(websocket)
+
+    response = asyncio.run(client.run_turn("hello"))
+
+    assert response.pcm_audio == pcm
+    assert "response.audio.delta" in response.event_types
+
+
 def test_text_delta_before_response_is_not_emitted_and_closes_socket() -> None:
     emitted: list[str] = []
     websocket = _FakeWebSocket(
@@ -249,6 +270,22 @@ def test_invalid_json_closes_and_clears_socket() -> None:
     with pytest.raises(XaiVoiceProtocolError, match="valid JSON"):
         asyncio.run(client.run_turn("hello"))
 
+    assert websocket.closed is True
+    assert client._websocket is None
+
+
+def test_protocol_failure_clears_resumption_state() -> None:
+    websocket = _FakeWebSocket(["{"])
+    client = _ready_client(
+        websocket,
+        config=VoiceSessionConfig(resumption_enabled=True),
+    )
+    client._conversation_id = "conversation-1"
+
+    with pytest.raises(XaiVoiceProtocolError, match="valid JSON"):
+        asyncio.run(client.run_turn("hello"))
+
+    assert client._conversation_id is None
     assert websocket.closed is True
     assert client._websocket is None
 

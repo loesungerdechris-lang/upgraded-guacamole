@@ -29,6 +29,7 @@ from typing import Any, Final, Self
 from urllib.parse import urlencode
 
 _XAI_REALTIME_ENDPOINT = "wss://api.x.ai/v1/realtime"
+_DEFAULT_MODEL: Final[str] = "grok-voice-think-fast-1.0"
 _ALLOWED_SAMPLE_RATES = frozenset({8000, 16000, 22050, 24000, 32000, 44100, 48000})
 _ALLOWED_REASONING_EFFORTS = frozenset({"high", "none"})
 _AGENT_ID_RE = re.compile(r"^agent_[A-Za-z0-9]{8,128}$")
@@ -51,6 +52,12 @@ _TRANSCRIPT_DELTA_EVENT_TYPES: Final[frozenset[str]] = frozenset(
         "response.output_audio_transcript.delta",
         "response.text.delta",
         "response.output_text.delta",
+    }
+)
+_AUDIO_DELTA_EVENT_TYPES: Final[frozenset[str]] = frozenset(
+    {
+        "response.output_audio.delta",
+        "response.audio.delta",
     }
 )
 _BOUNDARY_OVERRIDE_PATTERNS: Final[tuple[re.Pattern[str], ...]] = (
@@ -99,7 +106,7 @@ class XaiVoiceRemoteError(XaiVoiceError):
 class VoiceSessionConfig:
     """Validated Voice Agent API session configuration."""
 
-    model: str = "grok-voice-latest"
+    model: str = _DEFAULT_MODEL
     voice: str = "ara"
     instructions: str | None = None
     sample_rate: int = 24000
@@ -319,7 +326,7 @@ class ResponseCollector:
             self._transcript_bytes = new_size
             return None
 
-        if event_type == "response.output_audio.delta":
+        if event_type in _AUDIO_DELTA_EVENT_TYPES:
             self._require_active_response(event_type)
             delta = event.get("delta")
             if not isinstance(delta, str) or not delta:
@@ -726,6 +733,7 @@ class XaiVoiceClient:
             await self._send_event(self._config.session_update_event())
             await self._wait_for_session_ready()
         except Exception:
+            self._conversation_id = None
             await self.close()
             raise
 
@@ -752,6 +760,7 @@ class XaiVoiceClient:
             await self._send_event(user_event)
             await self._send_event(response_event)
         except Exception as exc:
+            self._conversation_id = None
             await self.close()
             raise XaiVoiceProtocolError(
                 "turn delivery became ambiguous; the client closed without automatic replay"
@@ -787,6 +796,7 @@ class XaiVoiceClient:
                         )
                     return completed
         except BaseException:
+            self._conversation_id = None
             await asyncio.shield(self.close())
             raise
 
@@ -973,7 +983,7 @@ def _build_argument_parser() -> argparse.ArgumentParser:
         description="Fail-closed server-side xAI Voice Agent client.",
     )
     parser.add_argument("--prompt", help="Run one text turn; omit for an interactive loop.")
-    parser.add_argument("--model", default=os.getenv("XAI_VOICE_MODEL", "grok-voice-latest"))
+    parser.add_argument("--model", default=os.getenv("XAI_VOICE_MODEL", _DEFAULT_MODEL))
     parser.add_argument("--voice", default=os.getenv("XAI_VOICE", "ara"))
     parser.add_argument("--instructions-file")
     parser.add_argument(
