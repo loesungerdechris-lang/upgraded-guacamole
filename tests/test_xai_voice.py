@@ -17,11 +17,11 @@ from sentinel_core.xai_voice import (
     XaiVoiceConfigurationError,
     XaiVoiceProtocolError,
     XaiVoiceRemoteError,
+    _safe_terminal_text,
     build_user_turn_events,
     create_pcm16_wav,
     parse_server_event,
     persist_voice_response,
-    _safe_terminal_text,
 )
 
 
