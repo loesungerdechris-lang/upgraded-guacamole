@@ -150,6 +150,14 @@ def main() -> None:
         insertion + anchor,
         "default model regression test",
     )
+    main_tests = replace_once(
+        main_tests,
+        '    ).endswith("model=grok-voice-latest&agent_id=agent_TestAgent123456")\n',
+        '    ).endswith(\n'
+        '        "model=grok-voice-think-fast-1.0&agent_id=agent_TestAgent123456"\n'
+        '    )\n',
+        "agent id pinned model expectation",
+    )
     MAIN_TESTS.write_text(main_tests, encoding="utf-8")
 
     regressions = REGRESSION_TESTS.read_text(encoding="utf-8")
