@@ -13,7 +13,7 @@ EXPECTED_BLOBS = {
     SOURCE: "f2104c547e1bb43c3c0de1d195390d60e82e3fcf",
     MAIN_TESTS: "f0fd629ac8fd6635fd2a77bae1d5c5a1ed136af8",
     REGRESSION_TESTS: "b91877445f13739c4abc7cc27b9ed134c366ecf9",
-    WORKFLOW: "b654b12d0cb3fbb7eb81cf2c17519ab801fe061c",
+    WORKFLOW: "74ecef56a9c2677375b46f110199df56d34f3993",
     DOCS: "9829e272494364fcd046ca64ef977365bf9761e1",
 }
 
@@ -137,9 +137,7 @@ def main() -> None:
     WORKFLOW.write_text(workflow, encoding="utf-8")
 
     main_tests = MAIN_TESTS.read_text(encoding="utf-8")
-    anchor = (
-        'def test_agent_id_fails_closed_without_explicit_opt_in() -> None:\n'
-    )
+    anchor = 'def test_agent_id_fails_closed_without_explicit_opt_in() -> None:\n'
     insertion = (
         'def test_default_model_is_version_pinned_for_stability() -> None:\n'
         '    assert VoiceSessionConfig().websocket_url() == (\n'
@@ -161,9 +159,7 @@ def main() -> None:
         'import asyncio\nimport base64\n',
         "base64 test import",
     )
-    audio_anchor = (
-        'def test_text_delta_before_response_is_not_emitted_and_closes_socket() -> None:\n'
-    )
+    audio_anchor = 'def test_text_delta_before_response_is_not_emitted_and_closes_socket() -> None:\n'
     audio_test = (
         'def test_response_audio_delta_alias_is_collected() -> None:\n'
         '    pcm = b"\\x00\\x00\\x01\\x00"\n'
@@ -188,9 +184,7 @@ def main() -> None:
         audio_test + audio_anchor,
         "audio alias regression test",
     )
-    resumption_anchor = (
-        'def test_non_completed_response_closes_and_clears_socket() -> None:\n'
-    )
+    resumption_anchor = 'def test_non_completed_response_closes_and_clears_socket() -> None:\n'
     resumption_test = (
         'def test_protocol_failure_clears_resumption_state() -> None:\n'
         '    websocket = _FakeWebSocket(["{"])\n'
