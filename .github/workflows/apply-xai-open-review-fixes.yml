@@ -5,6 +5,7 @@ on:
     branches: ["feat/xai-voice-boundary"]
     paths:
       - 'scripts/apply_xai_open_review_fixes.py'
+      - 'scripts/finalize_xai_open_review_fixes.py'
       - '.github/workflows/apply-xai-open-review-fixes.yml'
 
 permissions:
@@ -38,8 +39,10 @@ jobs:
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
 
-      - name: Apply SHA-guarded source and regression patches
-        run: python scripts/apply_xai_open_review_fixes.py
+      - name: Apply SHA-guarded security patches
+        run: |
+          python scripts/apply_xai_open_review_fixes.py
+          python scripts/finalize_xai_open_review_fixes.py
 
       - name: Enforce exact changed-file scope
         shell: bash
@@ -47,9 +50,10 @@ jobs:
           set -euo pipefail
           mapfile -t changed < <(git diff --name-only)
           printf '%s\n' "${changed[@]}"
-          test "${#changed[@]}" -eq 2
+          test "${#changed[@]}" -eq 3
           test "${changed[0]}" = "src/sentinel_core/xai_voice.py"
-          test "${changed[1]}" = "tests/test_xai_voice_review_regressions.py"
+          test "${changed[1]}" = "tests/test_xai_voice.py"
+          test "${changed[2]}" = "tests/test_xai_voice_review_regressions.py"
 
       - name: Install package with voice and dev extras
         run: |
@@ -76,6 +80,7 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git add \
             src/sentinel_core/xai_voice.py \
+            tests/test_xai_voice.py \
             tests/test_xai_voice_review_regressions.py
           git commit -m "Fix programmatic voice boundary and text deltas"
           git push origin HEAD:feat/xai-voice-boundary
