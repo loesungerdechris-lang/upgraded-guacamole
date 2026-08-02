@@ -84,14 +84,13 @@ jobs:
             tests/test_xai_voice.py \
             tests/test_xai_voice_review_regressions.py
 
-      - name: Commit verified hardening patch
+      - name: Commit verified product patch
         shell: bash
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
-            .github/workflows/sentinel-xai-voice.yml \
             docs/xai-voice-agent-security-gate.md \
             src/sentinel_core/xai_voice.py \
             tests/test_xai_voice.py \
