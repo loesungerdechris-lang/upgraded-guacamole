@@ -1,0 +1,83 @@
+name: Apply xAI Current Docs Hardening
+
+on:
+  push:
+    branches:
+      - feat/xai-voice-boundary
+    paths:
+      - scripts/apply_xai_current_docs_hardening.py
+      - .github/workflows/apply-xai-current-doc-hardening.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-xai-current-doc-hardening
+  cancel-in-progress: false
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout exact branch
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          ref: feat/xai-voice-boundary
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.11'
+
+      - name: Apply SHA-guarded hardening patch
+        run: python scripts/apply_xai_current_docs_hardening.py
+
+      - name: Enforce exact changed-file scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t changed < <(git diff --name-only | sort)
+          expected=(
+            '.github/workflows/sentinel-xai-voice.yml'
+            'docs/xai-voice-agent-security-gate.md'
+            'src/sentinel_core/xai_voice.py'
+            'tests/test_xai_voice.py'
+            'tests/test_xai_voice_review_regressions.py'
+          )
+          mapfile -t expected_sorted < <(printf '%s\n' "${expected[@]}" | sort)
+          diff -u <(printf '%s\n' "${expected_sorted[@]}") <(printf '%s\n' "${changed[@]}")
+
+      - name: Install package with deterministic voice and dev extras
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev,voice]
+
+      - name: Compile
+        run: python -m compileall -q src tests
+
+      - name: Lint
+        run: ruff check src tests
+
+      - name: Run focused xAI boundary tests
+        run: |
+          pytest -q \
+            tests/test_xai_voice.py \
+            tests/test_xai_voice_review_regressions.py
+
+      - name: Commit verified hardening patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            .github/workflows/sentinel-xai-voice.yml \
+            docs/xai-voice-agent-security-gate.md \
+            src/sentinel_core/xai_voice.py \
+            tests/test_xai_voice.py \
+            tests/test_xai_voice_review_regressions.py
+          git commit -m 'fix: harden xAI resumption and current API compatibility'
+          git push origin HEAD:feat/xai-voice-boundary
