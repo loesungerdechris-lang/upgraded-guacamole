@@ -20,7 +20,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0.0",
-  "ruff>=0.5.0"
+  "ruff==0.15.21"
 ]
 voice = [
   "websockets>=15.0,<17.0"
