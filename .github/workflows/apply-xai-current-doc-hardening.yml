@@ -1,5 +1,6 @@
 name: Apply xAI Current Docs Hardening
 
+# Triggered explicitly after the workflow file existed on the branch.
 on:
   push:
     branches:
