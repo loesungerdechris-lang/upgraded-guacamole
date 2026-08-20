@@ -5,7 +5,7 @@ import pytest
 from sentinel_core.workflow_security import validate_workflow_text
 
 CHECKOUT_SHA = "34e114876b0b11c390a56381ad16ebd13914f8d5"
-SETUP_SHA = "a26af69be951a213d495a4c3e4e4022e16d87065"
+SETUP_SHA = "5fda3b95a4ea91299a34e894583c3862153e4b97"
 
 
 def _workflow(step: str) -> str:
