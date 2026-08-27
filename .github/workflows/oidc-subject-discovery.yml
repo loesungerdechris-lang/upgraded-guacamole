@@ -1,0 +1,83 @@
+name: OIDC Subject Discovery
+
+on:
+  push:
+    branches:
+      - feature/oidc-test
+
+permissions: {}
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    environment: sentinel-staging
+    permissions:
+      id-token: write
+    steps:
+      - name: Extract allowlisted OIDC claims
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const token = await core.getIDToken('api://AzureADTokenExchange');
+            core.setSecret(token);
+
+            const parts = token.split('.');
+            if (parts.length !== 3) {
+              core.setFailed('Malformed OIDC token');
+              return;
+            }
+
+            const payload = JSON.parse(
+              Buffer.from(parts[1], 'base64url').toString('utf8')
+            );
+
+            const claims = {
+              iss: payload.iss,
+              sub: payload.sub,
+              aud: payload.aud,
+              repository: payload.repository,
+              repository_id: payload.repository_id,
+              repository_owner_id: payload.repository_owner_id,
+              environment: payload.environment,
+              ref: payload.ref,
+              sha: payload.sha,
+              workflow_ref: payload.workflow_ref,
+              workflow_sha: payload.workflow_sha
+            };
+
+            if (claims.iss !== 'https://token.actions.githubusercontent.com') {
+              core.setFailed('Unexpected OIDC issuer');
+              return;
+            }
+            if (claims.aud !== 'api://AzureADTokenExchange') {
+              core.setFailed('Unexpected OIDC audience');
+              return;
+            }
+            if (claims.repository !== 'loesungerdechris-lang/upgraded-guacamole') {
+              core.setFailed('Unexpected repository claim');
+              return;
+            }
+            if (!/^\d+$/.test(claims.repository_id ?? '')) {
+              core.setFailed('Missing or malformed repository_id');
+              return;
+            }
+            if (!/^\d+$/.test(claims.repository_owner_id ?? '')) {
+              core.setFailed('Missing or malformed repository_owner_id');
+              return;
+            }
+            if (claims.environment !== 'sentinel-staging') {
+              core.setFailed('Unexpected environment claim');
+              return;
+            }
+            if (claims.ref !== 'refs/heads/feature/oidc-test') {
+              core.setFailed('Unexpected ref claim');
+              return;
+            }
+            if (claims.sha !== context.sha) {
+              core.setFailed('OIDC SHA/context SHA mismatch');
+              return;
+            }
+
+            for (const [key, value] of Object.entries(claims)) {
+              console.log(`${key}: ${value ?? '<absent>'}`);
+            }
