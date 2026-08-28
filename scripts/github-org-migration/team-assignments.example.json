@@ -1,0 +1,49 @@
+{
+  "schema_version": "sentinel.github-team-assignments.v1",
+  "status": "HOLD",
+  "teams": {
+    "sentinel-core-owners": {
+      "members": [],
+      "repositories": {
+        "sentinel-core": "maintain"
+      }
+    },
+    "security-reviewers": {
+      "members": [],
+      "repositories": {
+        "sentinel-core": "pull",
+        "upgraded-guacamole": "pull"
+      }
+    },
+    "release-approvers": {
+      "members": [],
+      "repositories": {
+        "sentinel-core": "pull",
+        "upgraded-guacamole": "pull"
+      }
+    },
+    "public-ui-maintainers": {
+      "members": [],
+      "repositories": {
+        "sentinel-public-ui": "maintain"
+      }
+    },
+    "documentation-maintainers": {
+      "members": [],
+      "repositories": {
+        "sentinel-docs": "maintain"
+      }
+    },
+    "evidence-custodians": {
+      "members": [],
+      "repositories": {
+        "sentinel-evidence-archive": "maintain"
+      }
+    }
+  },
+  "limitations": [
+    "empty members are intentional until verified independent humans are selected",
+    "do not grant admin by default",
+    "repository permissions apply only after each repository transfer"
+  ]
+}
