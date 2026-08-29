@@ -29,24 +29,40 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Parse PowerShell without execution
+      - name: Parse all Azure PowerShell without execution
         shell: pwsh
         run: |
-          $tokens = $null
-          $errors = $null
-          $scriptPath = (Resolve-Path './scripts/azure/bootstrap-sentinel-oidc.ps1').Path
-          [System.Management.Automation.Language.Parser]::ParseFile(
-              $scriptPath,
-              [ref]$tokens,
-              [ref]$errors
-          ) | Out-Null
+          $failed = $false
+          $scripts = @(Get-ChildItem -LiteralPath './scripts/azure' -Filter '*.ps1' -File)
 
-          if ($errors.Count -gt 0) {
-              $errors | ForEach-Object { Write-Error $_.Message }
-              exit 1
+          if ($scripts.Count -eq 0) {
+            Write-Error 'No Azure PowerShell scripts were found.'
+            exit 1
           }
 
-          Write-Host 'PowerShell parser accepted the Azure bootstrap script.'
+          foreach ($script in $scripts) {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $script.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+
+            if ($errors.Count -gt 0) {
+              $failed = $true
+              $errors | ForEach-Object {
+                Write-Error "$($script.Name): $($_.Message)"
+              }
+            }
+            else {
+              Write-Host "PowerShell parser accepted $($script.Name)."
+            }
+          }
+
+          if ($failed) {
+            exit 1
+          }
 
       - name: Prove dry-run does not invoke Azure CLI
         shell: bash
