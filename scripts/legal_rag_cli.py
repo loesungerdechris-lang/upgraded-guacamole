@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""Ingest and query Legal-Core without a local Windows workstation."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+from sentinel_core.legal_rag.factory import build_embedder
+from sentinel_core.legal_rag.ingest import ingest_file
+from sentinel_core.legal_rag.retrieve import LegalRetriever
+from sentinel_core.legal_rag.store import LegalStore
+
+SEEDS = (
+    {
+        "file": Path("corpus/legal/vwgo_seed.md"),
+        "law": "VwGO",
+        "source_url": "https://www.gesetze-im-internet.de/vwgo/",
+        "source_name": "Gesetze im Internet (konsolidiert, nicht amtlich)",
+    },
+    {
+        "file": Path("corpus/legal/thueruig_seed.md"),
+        "law": "ThürUIG",
+        "source_url": "https://landesrecht.thueringen.de/bsth/document/jlr-UIGTHrahmen",
+        "source_name": "Landesrecht Thüringen (konsolidiert, nicht amtlich)",
+    },
+)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Legal-Core SQLite RAG")
+    parser.add_argument("--db", default="data/legal_core.sqlite")
+    parser.add_argument(
+        "--backend",
+        default="hashing",
+        help="hashing | e5-small | bge-m3",
+    )
+    sub = parser.add_subparsers(dest="cmd", required=True)
+
+    sub.add_parser("ingest-seeds", help="Ingest VwGO + ThürUIG seed markdown")
+
+    ing = sub.add_parser("ingest")
+    ing.add_argument("file")
+    ing.add_argument("--law", required=True)
+    ing.add_argument("--source-url", required=True)
+    ing.add_argument("--source-name", required=True)
+
+    q = sub.add_parser("query")
+    q.add_argument("question")
+    q.add_argument("--law")
+    q.add_argument("-k", type=int, default=6)
+
+    args = parser.parse_args()
+    store = LegalStore(args.db)
+    embedder = build_embedder(args.backend)
+
+    if args.cmd == "ingest-seeds":
+        total = 0
+        for spec in SEEDS:
+            n = ingest_file(
+                spec["file"],
+                law=spec["law"],
+                source_url=spec["source_url"],
+                source_name=spec["source_name"],
+                store=store,
+                embedder=embedder,
+            )
+            total += n
+            print(json.dumps({"file": str(spec["file"]), "ingested": n}, ensure_ascii=False))
+        card = store.model_card()
+        print(
+            json.dumps(
+                {
+                    "db": str(store.path),
+                    "chunks": store.count(),
+                    "ingested": total,
+                    "model_card": None if card is None else card.fingerprint(),
+                },
+                ensure_ascii=False,
+            )
+        )
+        return
+
+    if args.cmd == "ingest":
+        n = ingest_file(
+            args.file,
+            law=args.law,
+            source_url=args.source_url,
+            source_name=args.source_name,
+            store=store,
+            embedder=embedder,
+        )
+        print(json.dumps({"ingested": n, "chunks": store.count()}, ensure_ascii=False))
+        return
+
+    pack = LegalRetriever(store, embedder).citation_pack(args.question, law=args.law)
+    print(json.dumps(pack, ensure_ascii=False, indent=2))
+
+
+if __name__ == "__main__":
+    main()
