@@ -7,6 +7,7 @@ import argparse
 import json
 from pathlib import Path
 
+from sentinel_core.legal_rag.court import court_pack
 from sentinel_core.legal_rag.factory import build_embedder, build_reranker
 from sentinel_core.legal_rag.ingest import ingest_file
 from sentinel_core.legal_rag.retrieve import LegalRetriever
@@ -27,6 +28,8 @@ SEEDS = (
     },
 )
 
+DEFAULT_CASE = Path("cases/vg_weimar_fischerhuette.json")
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Legal-Core SQLite RAG")
@@ -42,6 +45,7 @@ def main() -> None:
         help="none | hashing | bge-m3",
     )
     parser.add_argument("--candidates", type=int, default=20)
+    parser.add_argument("--case", default=str(DEFAULT_CASE))
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("ingest-seeds", help="Ingest VwGO + ThürUIG seed markdown")
@@ -56,6 +60,9 @@ def main() -> None:
     q.add_argument("question")
     q.add_argument("--law")
     q.add_argument("-k", type=int, default=6)
+    q.add_argument("--with-court", action="store_true")
+
+    sub.add_parser("court-pack", help="Print VG Weimar venue and deadline anchor")
 
     args = parser.parse_args()
     store = LegalStore(args.db)
@@ -100,6 +107,10 @@ def main() -> None:
         print(json.dumps({"ingested": n, "chunks": store.count()}, ensure_ascii=False))
         return
 
+    if args.cmd == "court-pack":
+        print(json.dumps(court_pack(case_path=args.case), ensure_ascii=False, indent=2))
+        return
+
     reranker = build_reranker(args.rerank)
     pack = LegalRetriever(
         store,
@@ -107,6 +118,8 @@ def main() -> None:
         reranker=reranker,
         candidate_n=args.candidates,
     ).citation_pack(args.question, law=args.law, k=args.k)
+    if args.with_court:
+        pack = court_pack(pack, case_path=args.case)
     print(json.dumps(pack, ensure_ascii=False, indent=2))
 
 
