@@ -11,6 +11,7 @@ exact paragraph lookup and BM25. Mixed model cards in one index are rejected.
 
 from __future__ import annotations
 
+import hashlib
 import math
 import struct
 from collections import Counter
@@ -96,6 +97,10 @@ def _tokenize(text: str) -> list[str]:
     return [t for t in raw.split() if t]
 
 
+def _stable_token_hash(token: str) -> bytes:
+    return hashlib.sha256(token.encode("utf-8")).digest()
+
+
 class HashingEmbedder:
     """Deterministic fallback without torch. Not a substitute for ST in production."""
 
@@ -125,8 +130,9 @@ class HashingEmbedder:
         counts = Counter(tokens)
         n = max(sum(counts.values()), 1)
         for tok, ctf in counts.items():
-            idx = (hash(tok) & 0x7FFFFFFF) % self.card.dim
-            sign = 1.0 if (hash(tok + "#") & 1) else -1.0
+            digest = _stable_token_hash(tok)
+            idx = int.from_bytes(digest[:4], "big") % self.card.dim
+            sign = 1.0 if digest[4] & 1 else -1.0
             vec[idx] += sign * (ctf / n)
         return _l2norm(vec)
 
@@ -157,7 +163,6 @@ class SentenceTransformerEmbedder:
         self.trust_remote_code = trust_remote_code
         self._model = None
         prefixes = _prefixes_for(model_name)
-        # dim is filled after first load; 384 is the E5-small default and a safe placeholder.
         self.card = EmbeddingModelCard(
             name=model_name,
             family="sentence-transformers",
