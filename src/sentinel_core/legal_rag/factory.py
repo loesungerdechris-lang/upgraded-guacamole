@@ -1,4 +1,4 @@
-"""Build an embedder from a short backend name."""
+"""Build embedders and optional ColBERT rerankers from short names."""
 
 from __future__ import annotations
 
@@ -7,6 +7,11 @@ from sentinel_core.legal_rag.embedder import (
     Embedder,
     HashingEmbedder,
     SentenceTransformerEmbedder,
+)
+from sentinel_core.legal_rag.rerank import (
+    BgeM3ColbertReranker,
+    HashingColbertReranker,
+    Reranker,
 )
 
 BGE_M3_MODEL = "BAAI/bge-m3"
@@ -45,3 +50,27 @@ def build_embedder(
             revision=revision,
         )
     raise ValueError(f"unknown embedder backend: {backend!r}")
+
+
+def build_reranker(
+    backend: str = "none",
+    *,
+    device: str | None = None,
+    dim: int = 32,
+) -> Reranker | None:
+    """Return an optional ColBERT reranker.
+
+    ``backend`` values:
+    - ``none`` / ``off`` — no rerank
+    - ``hashing`` — deterministic MaxSim, tests
+    - ``bge-m3`` / ``colbert`` / ``m3`` — FlagEmbedding BGE-M3 multi-vector
+    """
+
+    key = backend.strip().lower()
+    if key in {"", "none", "off", "false"}:
+        return None
+    if key in {"hashing", "hash", "colbert-hashing"}:
+        return HashingColbertReranker(dim=dim)
+    if key in {"bge-m3", "colbert", "m3", "colbert-bge-m3"}:
+        return BgeM3ColbertReranker(device=device)
+    raise ValueError(f"unknown reranker backend: {backend!r}")
