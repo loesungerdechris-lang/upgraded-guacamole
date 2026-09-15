@@ -1,0 +1,54 @@
+{
+  "case_id": "vg-weimar-fischerhuette-thueruig",
+  "status": "draft-anchor",
+  "court": {
+    "name": "Verwaltungsgericht Weimar",
+    "kind": "Verwaltungsgericht",
+    "seat": "Weimar",
+    "address": "Jenaer Straße 2a, 99425 Weimar",
+    "district_includes": [
+      "Eichsfeld",
+      "Gotha",
+      "Ilm-Kreis",
+      "Kyffhäuserkreis",
+      "Nordhausen",
+      "Sömmerda",
+      "Unstrut-Hainich-Kreis",
+      "Weimarer Land",
+      "Erfurt",
+      "Weimar"
+    ],
+    "instance_above": "Thüringer Oberverwaltungsgericht",
+    "source_url": "https://verwaltungsgerichte.thueringen.de/verwaltungsgericht-weimar"
+  },
+  "procedure": {
+    "type_asserted": "Verpflichtungsklage",
+    "subject_asserted": "Zugang zu Umweltinformationen (ThürUIG) / Feuerwehreinsatz Fischerhütte",
+    "legal_basis": ["ThürUIG § 3", "VwGO § 42 Abs. 1", "VwGO § 74 Abs. 2", "VwGO § 81"],
+    "venue_norms": ["VwGO § 40 Abs. 1", "VwGO § 45", "VwGO § 52"],
+    "filing": {
+      "form": "schriftlich beim Gericht; beim VG auch zu Protokoll der Geschäftsstelle",
+      "electronic": "EGVP / elektronischer Rechtsverkehr, soweit eröffnet",
+      "norm": "VwGO § 81",
+      "note": "E-Mail allein ist kein sicherer fristwahrender Zugang."
+    }
+  },
+  "parties_public": {
+    "defendant_authority_asserted": "Stadt Ilmenau",
+    "venue_reason": "Ilm-Kreis liegt im Bezirk des Verwaltungsgerichts Weimar."
+  },
+  "deadlines": {
+    "rule": "VwGO § 74 Abs. 1 und Abs. 2",
+    "rule_text_ref": "ein Monat nach Zustellung des Widerspruchsbescheids, bei Verpflichtungsklage entsprechend wenn der Antrag abgelehnt wurde",
+    "widerspruchsbescheid_date_asserted": "2026-08-24",
+    "pzu_date": null,
+    "pzu_status": "unbekannt",
+    "court_receipt_status": "unbekannt",
+    "warning": "Die Klagefrist läuft ab Zustellung (PZU), nicht ab Bescheiddatum. Ohne PZU-Datum keine belastbare Fristberechnung."
+  },
+  "evidence_status": {
+    "aktenzeichen": null,
+    "filed": false,
+    "this_file_is_not": "eine Klageschrift und kein Nachweis des gerichtlichen Eingangs"
+  }
+}

@@ -1,0 +1,49 @@
+name: Legal Core RAG CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/legal-rag-sentence-transformer, main]
+  pull_request:
+    branches: [feat/legal-rag-sentence-transformer, main]
+
+permissions:
+  contents: read
+
+jobs:
+  test-legal-core:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install Core Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run Deterministic Unit and RAG Tests
+        run: |
+          pytest tests/test_legal_rag_embedder.py \
+                 tests/test_legal_rag_rerank.py \
+                 tests/test_legal_rag_store.py \
+                 tests/test_legal_rag_court.py -v
+
+      - name: Verify CLI Seed Ingest Retrieval and Court Pack
+        run: |
+          python scripts/legal_rag_cli.py --backend hashing ingest-seeds
+          python scripts/legal_rag_cli.py --backend hashing --rerank hashing query \
+            "Frist Verpflichtungsklage nach Widerspruchsbescheid § 74 VwGO" --law VwGO
+          python scripts/legal_rag_cli.py court-pack
