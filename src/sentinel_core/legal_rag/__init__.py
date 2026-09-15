@@ -17,6 +17,7 @@ from sentinel_core.legal_rag.embedder import (
     unpack_f32,
 )
 from sentinel_core.legal_rag.factory import build_embedder
+from sentinel_core.legal_rag.vector_index import VectorHit, VectorIndex
 
 __all__ = [
     "DEFAULT_ST_MODEL",
@@ -26,6 +27,8 @@ __all__ = [
     "HashingEmbedder",
     "MissingEmbeddingDependencyError",
     "SentenceTransformerEmbedder",
+    "VectorHit",
+    "VectorIndex",
     "build_embedder",
     "cosine",
     "pack_f32",
