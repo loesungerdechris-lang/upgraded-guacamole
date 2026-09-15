@@ -4,6 +4,7 @@ SentenceTransformer and FlagEmbedding are optional extras.
 The core package must import without torch.
 """
 
+from sentinel_core.legal_rag.court import court_pack, load_case
 from sentinel_core.legal_rag.embedder import (
     DEFAULT_ST_MODEL,
     EmbeddingMismatchError,
@@ -50,8 +51,10 @@ __all__ = [
     "build_embedder",
     "build_reranker",
     "cosine",
+    "court_pack",
     "ingest_file",
     "ingest_text",
+    "load_case",
     "maxsim",
     "pack_f32",
     "rerank_hits",
