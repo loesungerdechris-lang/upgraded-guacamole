@@ -7,7 +7,7 @@ import argparse
 import json
 from pathlib import Path
 
-from sentinel_core.legal_rag.factory import build_embedder
+from sentinel_core.legal_rag.factory import build_embedder, build_reranker
 from sentinel_core.legal_rag.ingest import ingest_file
 from sentinel_core.legal_rag.retrieve import LegalRetriever
 from sentinel_core.legal_rag.store import LegalStore
@@ -36,6 +36,12 @@ def main() -> None:
         default="hashing",
         help="hashing | e5-small | bge-m3",
     )
+    parser.add_argument(
+        "--rerank",
+        default="none",
+        help="none | hashing | bge-m3",
+    )
+    parser.add_argument("--candidates", type=int, default=20)
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("ingest-seeds", help="Ingest VwGO + ThürUIG seed markdown")
@@ -94,7 +100,13 @@ def main() -> None:
         print(json.dumps({"ingested": n, "chunks": store.count()}, ensure_ascii=False))
         return
 
-    pack = LegalRetriever(store, embedder).citation_pack(args.question, law=args.law)
+    reranker = build_reranker(args.rerank)
+    pack = LegalRetriever(
+        store,
+        embedder,
+        reranker=reranker,
+        candidate_n=args.candidates,
+    ).citation_pack(args.question, law=args.law, k=args.k)
     print(json.dumps(pack, ensure_ascii=False, indent=2))
 
 
