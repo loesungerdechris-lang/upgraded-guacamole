@@ -1,4 +1,4 @@
-"""Hybrid retrieval: exact paragraph, BM25, then dense ranking bonus."""
+"""Hybrid retrieval: exact paragraph, BM25, dense bonus, optional ColBERT."""
 
 from __future__ import annotations
 
@@ -6,17 +6,27 @@ import re
 
 from sentinel_core.legal_rag.embedder import Embedder, cosine, unpack_f32
 from sentinel_core.legal_rag.models import Hit, NormChunk
+from sentinel_core.legal_rag.rerank import Reranker, rerank_hits
 from sentinel_core.legal_rag.store import LegalStore
 
 ARTICLE_QUERY_RE = re.compile(r"§\s*(\d+[a-z]?)", re.I)
 
 
 class LegalRetriever:
-    def __init__(self, store: LegalStore, embedder: Embedder | None = None):
+    def __init__(
+        self,
+        store: LegalStore,
+        embedder: Embedder | None = None,
+        reranker: Reranker | None = None,
+        candidate_n: int = 20,
+    ):
         self.store = store
         self.embedder = embedder
+        self.reranker = reranker
+        self.candidate_n = candidate_n
 
     def search(self, query: str, law: str | None = None, k: int = 6) -> list[Hit]:
+        pool = max(k, self.candidate_n if self.reranker is not None else k)
         hits: dict[str, Hit] = {}
         guessed = law or _guess_law(query)
 
@@ -27,7 +37,7 @@ class LegalRetriever:
                     chunk, 1.0, "exact", f"exakter Treffer {article}"
                 )
 
-        for chunk, score in self.store.bm25(query, k=k * 3):
+        for chunk, score in self.store.bm25(query, k=pool * 3):
             if law and chunk.law != law:
                 continue
             prev = hits.get(chunk.chunk_id)
@@ -45,7 +55,7 @@ class LegalRetriever:
                     continue
                 scored.append((cosine(qvec, unpack_f32(blob)), chunk))
             scored.sort(key=lambda item: item[0], reverse=True)
-            for score, chunk in scored[:k]:
+            for score, chunk in scored[:pool]:
                 if score < 0.35:
                     continue
                 prev = hits.get(chunk.chunk_id)
@@ -57,7 +67,9 @@ class LegalRetriever:
                     "cosine + bm25",
                 )
 
-        ranked = sorted(hits.values(), key=lambda h: h.score, reverse=True)
+        ranked = sorted(hits.values(), key=lambda h: h.score, reverse=True)[:pool]
+        if self.reranker is not None:
+            return rerank_hits(query, ranked, self.reranker, k=k)
         return ranked[:k]
 
     def citation_pack(self, query: str, law: str | None = None, k: int = 6) -> dict:
@@ -75,6 +87,7 @@ class LegalRetriever:
                     "content_hash": h.chunk.content_hash,
                     "score": round(h.score, 4),
                     "ranker": h.ranker,
+                    "reason": h.reason,
                 }
                 for h in found
             ],
