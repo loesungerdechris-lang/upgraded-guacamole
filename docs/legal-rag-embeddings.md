@@ -1,49 +1,41 @@
-# Legal-Core Embeddings
+# Legal-Core Embeddings and Store
 
 Dense retrieval is a ranking bonus, never the citation authority.
+One SQLite file holds one model card. Mixed spaces are rejected.
 
 ## Backends
 
-| Backend | Extra | Use |
-| --- | --- | --- |
-| `HashingEmbedder` | none | tests, offline bootstrap |
-| `SentenceTransformerEmbedder` | `sentinel-core[rag]` | production ranking |
+| `build_embedder(...)` | Model | Dim | Use |
+| --- | --- | --- | --- |
+| `hashing` | hashing-v1 | 256 default | CI, no torch |
+| `e5-small` | `intfloat/multilingual-e5-small` | 384 | Phase 1 default |
+| `bge-m3` | `BAAI/bge-m3` | 1024 | Phase 2 dense only |
 
-Default dense model: `intfloat/multilingual-e5-small` (384-d, DE/EN).
-E5 queries are prefixed with `query: `, passages with `passage: `.
+E5 queries use `query: `, passages `passage: `. BGE-M3 needs no prefix.
+BGE-M3 Sparse and ColBERT are not stored in this phase.
 
-## Install
+## Decentral ingest (no Windows workstation)
+
+```bash
+pip install -e ".[dev]"
+python scripts/legal_rag_cli.py --backend hashing ingest-seeds
+python scripts/legal_rag_cli.py --backend hashing query \
+  "Frist Verpflichtungsklage nach Widerspruchsbescheid § 74 VwGO" --law VwGO
+```
+
+With GPU / Hugging Face cache:
 
 ```bash
 pip install -e ".[rag]"
+python scripts/legal_rag_cli.py --backend e5-small ingest-seeds
 ```
 
-First run downloads the model from Hugging Face into the local cache.
-Pin a `revision` in production and store `EmbeddingModelCard.fingerprint()` next to every vector blob.
-
-## Usage
-
-```python
-from sentinel_core.legal_rag import SentenceTransformerEmbedder, build_embedder
-from sentinel_core.legal_rag.vector_index import VectorIndex
-
-enc = build_embedder("sentence-transformers")
-index = VectorIndex(enc.card)
-index.add(
-    "vwgo-74-1",
-    enc.embed_legal_passage(
-        law="VwGO",
-        article="§ 74",
-        absatz="Abs. 1",
-        text="Die Frist für die Erhebung der Klage beträgt einen Monat.",
-    ),
-    enc.card,
-)
-hits = index.search_query("Klagefrist nach Widerspruchsbescheid", enc)
-```
+Generated file: `data/legal_core.sqlite` (gitignored).
+Seed sources live in `corpus/legal/` and cite Gesetze-im-Internet / Landesrecht Thüringen.
 
 ## Rules
 
-1. Do not mix model cards in one SQLite / memory index.
-2. Re-embed the corpus after any model or revision change.
-3. Exact `§`-lookup and BM25 remain mandatory; cosine similarity cannot invent a paragraph.
+1. Do not mix model cards in one SQLite file.
+2. Re-embed after any model or revision change.
+3. Exact `§`-lookup and BM25 remain mandatory.
+4. Texts in the store are not the official BGBl./GVBl. publication.
