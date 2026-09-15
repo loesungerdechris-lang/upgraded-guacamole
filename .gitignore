@@ -43,6 +43,11 @@ artifacts/
 out/
 tmp/
 
+# Legal-Core generated indexes (rebuild via scripts/legal_rag_cli.py)
+data/*.sqlite
+data/*.sqlite-wal
+data/*.sqlite-shm
+
 # Secrets and keys
 *.pem
 *.key
