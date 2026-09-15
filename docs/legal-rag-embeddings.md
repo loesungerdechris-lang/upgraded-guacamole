@@ -1,7 +1,8 @@
-# Legal-Core Embeddings and Store
+# Legal-Core Embeddings, Store, Rerank
 
 Dense retrieval is a ranking bonus, never the citation authority.
 One SQLite file holds one model card. Mixed spaces are rejected.
+ColBERT vectors are **not** stored. They are computed only for the candidate shortlist.
 
 ## Backends
 
@@ -11,31 +12,40 @@ One SQLite file holds one model card. Mixed spaces are rejected.
 | `e5-small` | `intfloat/multilingual-e5-small` | 384 | Phase 1 default |
 | `bge-m3` | `BAAI/bge-m3` | 1024 | Phase 2 dense only |
 
-E5 queries use `query: `, passages `passage: `. BGE-M3 needs no prefix.
-BGE-M3 Sparse and ColBERT are not stored in this phase.
+| `build_reranker(...)` | Implementation | Use |
+| --- | --- | --- |
+| `none` | off | default |
+| `hashing` | token MaxSim | tests |
+| `bge-m3` | FlagEmbedding multi-vector | Phase 3, Top-20 |
 
-## Decentral ingest (no Windows workstation)
+## Pipeline
+
+1. Exact `§` lookup
+2. SQLite FTS5 / BM25
+3. Dense cosine (optional)
+4. ColBERT MaxSim on `candidate_n` (default 20) → top `k`
+
+## Decentral commands
 
 ```bash
 pip install -e ".[dev]"
 python scripts/legal_rag_cli.py --backend hashing ingest-seeds
-python scripts/legal_rag_cli.py --backend hashing query \
+python scripts/legal_rag_cli.py --backend hashing --rerank hashing query \
   "Frist Verpflichtungsklage nach Widerspruchsbescheid § 74 VwGO" --law VwGO
 ```
 
-With GPU / Hugging Face cache:
+Production ColBERT (GPU / large RAM, not Windows-required):
 
 ```bash
-pip install -e ".[rag]"
-python scripts/legal_rag_cli.py --backend e5-small ingest-seeds
+pip install -e ".[rag,colbert]"
+python scripts/legal_rag_cli.py --backend bge-m3 --rerank bge-m3 query \
+  "Welche Frist folgt aus diesem Widerspruchsbescheid?" --law VwGO
 ```
-
-Generated file: `data/legal_core.sqlite` (gitignored).
-Seed sources live in `corpus/legal/` and cite Gesetze-im-Internet / Landesrecht Thüringen.
 
 ## Rules
 
 1. Do not mix model cards in one SQLite file.
 2. Re-embed after any model or revision change.
 3. Exact `§`-lookup and BM25 remain mandatory.
-4. Texts in the store are not the official BGBl./GVBl. publication.
+4. ColBERT may reorder, it may not invent a paragraph.
+5. Texts in the store are not the official BGBl./GVBl. publication.
