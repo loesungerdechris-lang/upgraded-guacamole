@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Iterable, Protocol, Sequence
 
 DEFAULT_ST_MODEL = "intfloat/multilingual-e5-small"
+BGE_M3_MODEL = "BAAI/bge-m3"
 E5_PREFIXES = {"query": "query: ", "passage": "passage: "}
 
 
@@ -124,6 +125,19 @@ class HashingEmbedder:
     def embed_passages(self, texts: Sequence[str]) -> list[list[float]]:
         return [self._embed(t) for t in texts]
 
+    def embed_legal_passage(
+        self,
+        *,
+        law: str,
+        article: str,
+        absatz: str | None,
+        text: str,
+    ) -> list[float]:
+        header = f"{law} {article}"
+        if absatz:
+            header = f"{header} {absatz}"
+        return self._embed(f"{header}\n{text}")
+
     def _embed(self, text: str) -> list[float]:
         tokens = _tokenize(text)
         vec = [0.0] * self.card.dim
@@ -191,7 +205,6 @@ class SentenceTransformerEmbedder:
         absatz: str | None,
         text: str,
     ) -> list[float]:
-        """Encode one norm chunk with a stable lexical header."""
         header = f"{law} {article}"
         if absatz:
             header = f"{header} {absatz}"
@@ -261,6 +274,7 @@ def _known_dim(model_name: str) -> int:
         "intfloat/multilingual-e5-base": 768,
         "intfloat/multilingual-e5-large": 1024,
         "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2": 384,
+        BGE_M3_MODEL: 1024,
     }
     return table.get(model_name, 384)
 
