@@ -1,0 +1,29 @@
+# SENTINEL demo-mvp/v0.1
+
+This implements the user's approved first sprint, not CN-EVIDENCE-001 conformance and not the canonical v2.2 test package. Directory `demo-v2.2` is a working name. No canonical v2.2 files were resolved in the available Library/GitHub search. Provenance, vulnerability scanning, hardware signing, independent review, lifecycle and production releases are outside this sprint.
+
+Build one dependency-free Rust program, run its real tests, package one static executable into an OCI scratch image with Crane, scan that exact pushed image digest with Syft CycloneDX 1.6, generate a labelled mock governance report, and attest SBOM, governance and an inventory manifest with Cosign 3.1.3. Cosign 3.1.3 generates in-toto Statement v0.1 envelopes from an explicit predicate and predicate-type URI; this is not a SLSA provenance stage. The same script runs locally and in GitHub Actions against a process-local Distribution registry. No GHCR writes or GitHub release publication.
+
+Test signing uses a freshly generated local key, no public transparency log, no timestamps and no OIDC. Public key and policy are passed independently to the verifier; the generated acceptance request is a demo hand-off, not independently authorized release approval. Production acceptance is always false. Only technical demo bundle verification may PASS.
+
+Transport: Cosign OCI bundles with OCI referrers-tag fallback, no ORAS dependency. Online reads directly fetch pinned manifests/blobs; offline exports use `blobs/sha256/<hex>` for both. Artifacts have one bundle layer and `subject.digest == imageDigest`. The evidence inventory binds exact artifact and bundle descriptors, not just type names. No trust in mutable tags at verification time.
+
+Types: manifest `https://sentinel.example/demo/evidence-manifest/v1`, governance `https://sentinel.example/demo/governance/v1`, SBOM `https://cyclonedx.org/bom`. Profile `sentinel-demo-mvp/v0.1`. Demo URIs are deliberately non-production.
+
+All JSON uses duplicate-key rejecting parsing. Policy `policy/governance.yml` uses the JSON subset of YAML and is parsed without third-party dependencies. Policy fields: `profile`, `allowMockGovernance: true`, `productionAcceptance: false`, `requiredRoles: ["sbom", "governance"]`, `sbomSpecVersion: "1.6"`. No weaker policy/profile is supported.
+
+Acceptance request fields: `profile`, `image` (repository@sha256 digest), `manifest` (ArtifactRef below), `runId`, `policySha256`, `publicKeySha256`. Digest fields contain `sha256:<64 lowercase hex>`. SHA256 pins refer to exact file bytes. Request is a separately supplied trusted input.
+
+Descriptor: `{digest, size, mediaType}`. ArtifactRef: `{artifact: Descriptor, payload: Descriptor}`. Image and artifact manifests are `application/vnd.oci.image.manifest.v1+json`; bundle payload is `application/vnd.dev.sigstore.bundle.v0.3+json`.
+
+Manifest predicate: `{profile, runId, imageDigest, policySha256, entries}`. Entries are exactly one each of sbom/governance: `{role, predicateType, artifact: Descriptor, payload: Descriptor}`. Governance predicate: `{profile, fixture: true, productionApproval: false, runId, imageDigest, policySha256, checks: {buildPassed: true, testsPassed: true, sbomGenerated: true}}`. These checks record actual pipeline completion but governance approval is deliberately mocked. SBOM is real Syft output with CycloneDX 1.6; no vulnerability or completeness guarantee.
+
+Verifier validates request/profile and policy/key pins, target digest and all image config/layer blobs, root artifact/bundle hashes/sizes, OCI subject, actual Cosign DSSE signatures using the independent public key, Statement v0.1/type/subject, root run/policy context, exact mandatory roles, all entry descriptors and signatures, SBOM format, mock-governance fields/context/checks. No dynamic execution from evidence. Bounded reads (64 MiB per blob; 128 MiB total), no URL from content, no path traversal, no certificate/OIDC fallback, and no network in offline signature verification. Basic demo is one platform only; indexes fail.
+
+Interface: `verify_bundle(request: dict, policy_bytes: bytes, public_key_path: Path, store, cosign_binary: str) -> dict`. Store provides `read_manifest(digest: str) -> bytes` and `read_blob(digest: str) -> bytes`; missing objects raise FileNotFoundError, network/operational errors raise OSError. Return stable `{profile, status, exitCode, reasonCodes, checks, imageDigest, productionAcceptance:false, limitations}`. PASS=0; missing required evidence HOLD=2; cryptographic/context/policy contradictions BLOCKED=3; operational/unsupported ERROR=4. No compliance score. Crypto subprocess errors fail closed. Signer and verifier never silently pick a bundled key.
+
+Six acceptance scenarios use real Cosign signatures: happy-path PASS; missing-sbom HOLD; missing-governance HOLD; digest-mismatch BLOCKED; bad-signature BLOCKED; missing-manifest HOLD. Signature corruption must repin outer artifact/payload digests in the trusted test request so it exercises actual signature validation rather than stopping at a hash mismatch. Missing evidence removes an actual referenced object. Additional narrow security tests are allowed only for concrete false-PASS risks.
+
+Same verification decision must repeat on the same bytes. ECDSA keys/signatures and artifact timestamps vary between builds; this is not a claim of bit-identical releases across machines.
+
+CI integration: the same runner is triggered by pull_request, push to main, merge_group, workflow_dispatch, or workflow_call. A dependent always-evaluated technical gate accepts only the exact GitHub matrix result success. Missing/skipped/cancelled/failed results and inability to persist the gate report never produce an accepted gate. This CI status report is not an independently authorized or signed release receipt.

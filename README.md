@@ -25,6 +25,15 @@ tests/         Verifier, fixtures, and red-team style tests
 .github/       CI and repository hygiene checks
 ```
 
+## Architecture demonstrator — M1 (draft)
+
+[`demo-v2.2/`](demo-v2.2/README.md) contains the isolated Evidence Bundle CI/CD
+demonstrator. It uses one runner locally and in GitHub Actions, a real local OCI
+registry, Syft/Cosign evidence, and a six-case acceptance matrix. It is an
+architecture demonstrator with mocked governance, not a compliance assessment or
+production release authority. The existing core and receipt/release gates remain
+in force. Scope and merge blockers: [M1 maturity](demo-v2.2/docs/MATURITY.md).
+
 ## Implemented bootstrap checks
 
 - JSON Schema validation for evidence records

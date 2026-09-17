@@ -1,0 +1,7 @@
+{
+  "profile": "sentinel-demo-mvp/v0.1",
+  "allowMockGovernance": true,
+  "productionAcceptance": false,
+  "requiredRoles": ["sbom", "governance"],
+  "sbomSpecVersion": "1.6"
+}

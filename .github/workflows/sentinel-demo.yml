@@ -1,0 +1,82 @@
+name: SENTINEL demo evidence acceptance
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    defaults:
+      run:
+        working-directory: demo-v2.2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario:
+          - happy-path
+          - missing-sbom
+          - missing-governance
+          - digest-mismatch
+          - bad-signature
+          - missing-manifest
+    steps:
+      - name: Checkout reviewed source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install checksum-pinned demo tools
+        run: python3 scripts/bootstrap.py --directory .tools
+      - name: Verify implementation tests
+        env:
+          COSIGN_BIN: ${{ github.workspace }}/demo-v2.2/.tools/cosign
+        run: python3 -m unittest discover -s tests -v
+      - name: Run the same local pipeline and selected acceptance case
+        env:
+          DEMO_SCENARIO: ${{ matrix.scenario }}
+        run: python3 scripts/run_demo.py --tools .tools --output release --scenario "$DEMO_SCENARIO"
+      - name: Retain public evidence and results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sentinel-demo-${{ matrix.scenario }}
+          path: demo-v2.2/release/
+          retention-days: 7
+          if-no-files-found: warn
+
+  demo-gate:
+    defaults:
+      run:
+        working-directory: demo-v2.2
+    name: SENTINEL demo gate
+    needs: acceptance
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout gate implementation
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require a successful acceptance matrix
+        env:
+          ACCEPTANCE_RESULT: ${{ needs.acceptance.result }}
+        run: python3 scripts/ci_gate.py --acceptance-result "$ACCEPTANCE_RESULT" --output ci-gate/result.json
+      - name: Retain technical gate decision
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sentinel-demo-gate
+          path: demo-v2.2/ci-gate/result.json
+          retention-days: 7
+          if-no-files-found: error
