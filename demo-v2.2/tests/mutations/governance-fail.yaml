@@ -1,0 +1,6 @@
+{
+  "scenario": "governance-fail",
+  "operation": "signed-variant",
+  "role": "governance",
+  "expectedExit": 50
+}

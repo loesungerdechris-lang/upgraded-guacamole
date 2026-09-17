@@ -1,0 +1,6 @@
+{
+  "scenario": "missing-attestation",
+  "operation": "remove-attestation",
+  "role": "governance",
+  "expectedExit": 14
+}

@@ -1,8 +1,14 @@
 # SENTINEL Evidence Demonstrator
 
-**Reifegrad: Architecture Demonstrator — Milestone M1 — DRAFT.**
-CI/CD und Verifikationsframework sind implementiert; gehostete Abnahme und
-menschliche Freigabe stehen aus. Siehe [Reifegrad und Merge-Kriterien](docs/MATURITY.md).
+**Reifegrad: Architecture Demonstrator — M1 nachgewiesen, M2 als Draft-Erweiterung.**
+M1 ist durch [Draft PR #69](https://github.com/loesungerdechris-lang/upgraded-guacamole/pull/69)
+und den [erfolgreichen GitHub-Lauf](https://github.com/loesungerdechris-lang/upgraded-guacamole/actions/runs/35213885803)
+belegt. Governance-Akzeptanz und menschliches Review bleiben offen.
+
+**M2:** Ein live erzeugtes Golden Bundle, zehn deklarative Mutationen und exakte
+Prozess-Exit-Codes. Der [M2-Vertrag mit Startbefehlen](docs/M2_PROFILE.md) beschreibt
+das zusätzliche Profil, die Demo-Provenance und die Vertrauensgrenzen.
+Die folgenden Build-/Verifier-Details beschreiben weiterhin den kompatiblen M1-Pfad.
 
 Ein kleiner, ausführbarer erster Sprint: **ein Rust-Binary, ein reales SBOM, ein ausdrücklich markierter Governance-Mock, ein signiertes Evidence Manifest und ein lesender Verifier.** Die Pipeline prüft das Bundle direkt aus einer lokalen OCI-Registry und wiederholt die Prüfung am exportierten Paket.
 
@@ -85,13 +91,15 @@ Die Negativfälle verändern Kopien eines **real erzeugten und signierten** Pake
 
 ## GitHub Actions
 
-Der Repository-Workflow [`.github/workflows/sentinel-demo.yml`](../.github/workflows/sentinel-demo.yml) startet bei Pull Requests, Pushes auf `main` und Merge-Queue-Ereignissen. Zusätzlich unterstützt er manuellen Start und `workflow_call` zur Einbindung in eine übergeordnete Pipeline. Jeder der sechs Matrixjobs erzeugt seine eigene Registry und seinen eigenen Testschlüssel und führt denselben Runner im Arbeitsverzeichnis `demo-v2.2` aus. Actions sind auf konkrete Commits gepinnt; Berechtigungen sind auf lesenden Repository-Zugriff begrenzt.
+Der Repository-Workflow [`.github/workflows/sentinel-demo.yml`](../.github/workflows/sentinel-demo.yml)
+startet bei Pull Requests, Pushes auf `main`, Merge-Queue-Ereignissen, manuell und
+per `workflow_call`. `verify-golden` erzeugt und prüft genau ein M2-Bundle.
+`mutation-suite` lädt dasselbe gepinnte Artefakt in zehn Matrixjobs und prüft pro
+Fall den erwarteten Exit-Code. Private Schlüssel gelangen nicht in diese Jobs.
 
-Der stabile Abschlussjob **SENTINEL demo gate** wertet mit `always()` auch einen nicht erfolgreichen Matrixbefund aus. Nur `needs.acceptance.result == 'success'` öffnet das technische Gate. Fehler, Abbruch, übersprungene Jobs oder unbekannte Werte sperren es; auch eine nicht speicherbare Gate-Entscheidung führt zu einem Fehler. Die Entscheidung wird als eigenes CI-Artefakt gespeichert. Die Einbindung eines bestehenden Releasejobs beschreibt `docs/CI_INTEGRATION.md`.
-
-Die GitHub-Checks dieses Draft-PRs dokumentieren den gehosteten Stand. Die lokalen
-Ergebnisse sind im Validierungsbericht ausgewiesen. Der neue technische Demo-Check
-ersetzt weder vorhandene Repository-Gates noch eine Produktionsfreigabe.
+**SENTINEL demo gate** benötigt beide Jobs mit Ergebnis `success`. Fehler,
+Abbrüche, übersprungene Jobs und unbekannte Werte sperren das technische Gate.
+Das Gate ist keine Produktionsfreigabe. Details: [CI-Integration](docs/CI_INTEGRATION.md).
 
 ## Dateien
 

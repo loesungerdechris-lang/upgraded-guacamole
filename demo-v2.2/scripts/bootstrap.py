@@ -91,6 +91,7 @@ def install_rust(lock: dict, destination: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--directory", type=Path, default=ROOT / ".tools")
+    parser.add_argument("--only", choices=["cosign"])
     args = parser.parse_args()
     if platform.system() != "Linux" or platform.machine() not in {"x86_64", "AMD64"}:
         parser.error("This fixed demo toolchain requires Linux/amd64 (WSL2 is supported)")
@@ -100,6 +101,10 @@ def main() -> None:
     install_lock = (destination / "install.lock").open("a")
     fcntl.flock(install_lock, fcntl.LOCK_EX)
     lock = json.loads((ROOT / "toolchain.lock.json").read_bytes())
+    if args.only:
+        install_tool(next(item for item in lock["tools"] if item["name"] == args.only), destination)
+        print("Pinned tool ready:", args.only)
+        return
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         for _ in pool.map(lambda item: install_tool(item, destination), lock["tools"]):
             pass

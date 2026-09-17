@@ -1,0 +1,6 @@
+{
+  "scenario": "subject-mismatch",
+  "operation": "signed-variant",
+  "role": "governance",
+  "expectedExit": 40
+}

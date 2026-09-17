@@ -11,12 +11,14 @@ from sentinel_demo.cli import atomic_json
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--acceptance-result", required=True)
+    parser.add_argument("--golden-result", default="success")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
-    accepted = args.acceptance_result == "success"
+    accepted = args.acceptance_result == "success" and args.golden_result == "success"
     result = {
         "profile": "sentinel-demo-ci-gate/v1",
         "acceptanceResult": args.acceptance_result,
+        "goldenResult": args.golden_result,
         "status": "PASS" if accepted else "BLOCKED",
         "reasonCode": "ACCEPTANCE_SUCCESSFUL" if accepted else "ACCEPTANCE_NOT_SUCCESSFUL",
         "exitCode": 0 if accepted else 1,

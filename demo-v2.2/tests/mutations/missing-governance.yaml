@@ -1,0 +1,6 @@
+{
+  "scenario": "missing-governance",
+  "operation": "remove-payload",
+  "role": "governance",
+  "expectedExit": 12
+}

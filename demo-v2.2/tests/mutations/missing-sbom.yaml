@@ -1,0 +1,6 @@
+{
+  "scenario": "missing-sbom",
+  "operation": "remove-payload",
+  "role": "sbom",
+  "expectedExit": 11
+}

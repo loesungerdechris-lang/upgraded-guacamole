@@ -1,0 +1,6 @@
+{
+  "scenario": "unknown-predicate",
+  "operation": "signed-variant",
+  "role": "governance",
+  "expectedExit": 60
+}

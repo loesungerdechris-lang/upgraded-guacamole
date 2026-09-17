@@ -1,4 +1,4 @@
-"""Read-only CLI. JSON reports are written atomically; exit zero requires PASS."""
+"""Read-only verification and an explicit fixture-copy mutation command."""
 from __future__ import annotations
 
 import argparse
@@ -60,23 +60,39 @@ def main(argv=None) -> int:
     verify.add_argument("--offline", type=Path)
     verify.add_argument("--cosign", default="cosign")
     verify.add_argument("--output", required=True, type=Path)
+    mutation = sub.add_parser("mutate", help="Create a mutated test copy of a sealed golden bundle")
+    mutation.add_argument("--golden", type=Path, required=True)
+    mutation.add_argument("--golden-pin", required=True)
+    mutation.add_argument("--scenario", required=True)
+    mutation.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
+    if args.command == "mutate":
+        from .mutations import mutate
+        try:
+            expected = mutate(args.golden, args.golden_pin, args.scenario, args.output)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            print("MUTATION ERROR:", str(exc), file=sys.stderr)
+            return 99
+        print("Mutation prepared:", args.scenario, "expected verifier exit:", expected)
+        return 0
+    profile = "sentinel-demo-mvp/v0.1"
     try:
         request = json.loads(_read_input(args.request), object_pairs_hook=_unique,
                              parse_constant=_reject_constant)
         if not isinstance(request, dict) or not isinstance(request.get("image"), str):
             raise ValueError("Expected a request object with an image reference")
+        profile = request.get("profile", profile)
         store = DirectoryStore(args.offline) if args.offline else RegistryStore(request["image"].split("@")[0])
         result = verify_bundle(request, _read_input(args.policy), args.key, store, args.cosign)
     except (OSError, ValueError, KeyError, TypeError) as exc:
-        result = {"profile": "sentinel-demo-mvp/v0.1", "status": "ERROR", "exitCode": 4,
+        result = {"profile": profile, "status": "ERROR", "exitCode": 90 if profile == "sentinel-demo-m2/v0.1" else 4,
                   "reasonCodes": ["INPUT_ERROR"], "checks": [], "productionAcceptance": False,
                   "limitations": [str(exc)]}
     try:
         atomic_json(args.output, result)
     except OSError as exc:
         print("Cannot persist verification result:", str(exc), file=sys.stderr)
-        return 4
+        return 90 if profile == "sentinel-demo-m2/v0.1" else 4
     print("SENTINEL VERIFY-BUNDLE — DEMO ONLY")
     print("Image Digest:", result.get("imageDigest", "unavailable"))
     print("Bundle Status:", result["status"])

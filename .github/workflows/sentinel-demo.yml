@@ -12,22 +12,15 @@ permissions:
   contents: read
 
 jobs:
-  acceptance:
+  verify-golden:
     defaults:
       run:
         working-directory: demo-v2.2
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        scenario:
-          - happy-path
-          - missing-sbom
-          - missing-governance
-          - digest-mismatch
-          - bad-signature
-          - missing-manifest
+    outputs:
+      golden-pin: ${{ steps.contract.outputs.golden-pin }}
+      scenarios: ${{ steps.contract.outputs.scenarios }}
     steps:
       - name: Checkout reviewed source
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -35,43 +28,102 @@ jobs:
           persist-credentials: false
       - name: Install checksum-pinned demo tools
         run: python3 scripts/bootstrap.py --directory .tools
-      - name: Verify implementation tests
+      - name: Verify implementation and M1 compatibility
         env:
           COSIGN_BIN: ${{ github.workspace }}/demo-v2.2/.tools/cosign
         run: python3 -m unittest discover -s tests -v
-      - name: Run the same local pipeline and selected acceptance case
-        env:
-          DEMO_SCENARIO: ${{ matrix.scenario }}
-        run: python3 scripts/run_demo.py --tools .tools --output release --scenario "$DEMO_SCENARIO"
-      - name: Retain public evidence and results
+      - name: Generate and verify the single live golden bundle
+        run: python3 scripts/build_golden.py --tools .tools --output release-golden --pin-output release-pin.json
+      - name: Export immutable golden pin and catalog matrix
+        id: contract
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          from pathlib import Path
+          contract = json.loads(Path("release-pin.json").read_bytes())
+          with open(os.environ["GITHUB_OUTPUT"], "a") as stream:
+              stream.write("golden-pin=" + contract["goldenPin"] + "\n")
+              stream.write("scenarios=" + json.dumps(contract["scenarios"], separators=(",", ":")) + "\n")
+          PYTHON
+      - name: Retain sealed public golden evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sentinel-m2-golden
+          path: demo-v2.2/release-golden/
+          retention-days: 7
+          if-no-files-found: error
+      - name: Retain independently exported golden pin
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: sentinel-demo-${{ matrix.scenario }}
-          path: demo-v2.2/release/
+          name: sentinel-m2-pin
+          path: demo-v2.2/release-pin.json
           retention-days: 7
           if-no-files-found: warn
+
+  mutation-suite:
+    needs: verify-golden
+    defaults:
+      run:
+        working-directory: demo-v2.2
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: ${{ fromJSON(needs.verify-golden.outputs.scenarios) }}
+    steps:
+      - name: Checkout the same reviewed source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Download the shared golden bundle
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: sentinel-m2-golden
+          path: demo-v2.2/release-golden
+      - name: Install checksum-pinned verifier tool
+        run: python3 scripts/bootstrap.py --directory .tools --only cosign
+      - name: Mutate a copy and assert the exact process exit
+        env:
+          SCENARIO: ${{ matrix.scenario }}
+          GOLDEN_PIN: ${{ needs.verify-golden.outputs.golden-pin }}
+        run: |
+          python3 scripts/run_mutation_suite.py \
+            --golden release-golden --golden-pin "$GOLDEN_PIN" \
+            --scenario "$SCENARIO" --cosign .tools/cosign --output release-mutations
+      - name: Retain mutation decisions and verifier logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sentinel-m2-${{ matrix.scenario }}
+          path: |
+            demo-v2.2/release-mutations/*.json
+            demo-v2.2/release-mutations/*.log
+          retention-days: 7
+          if-no-files-found: error
 
   demo-gate:
     defaults:
       run:
         working-directory: demo-v2.2
     name: SENTINEL demo gate
-    needs: acceptance
+    needs: [verify-golden, mutation-suite]
     if: ${{ always() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    permissions:
-      contents: read
     steps:
       - name: Checkout gate implementation
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - name: Require a successful acceptance matrix
+      - name: Require golden verification and every mutation test
         env:
-          ACCEPTANCE_RESULT: ${{ needs.acceptance.result }}
-        run: python3 scripts/ci_gate.py --acceptance-result "$ACCEPTANCE_RESULT" --output ci-gate/result.json
+          GOLDEN_RESULT: ${{ needs.verify-golden.result }}
+          MUTATION_RESULT: ${{ needs.mutation-suite.result }}
+        run: |
+          python3 scripts/ci_gate.py --golden-result "$GOLDEN_RESULT" \
+            --acceptance-result "$MUTATION_RESULT" --output ci-gate/result.json
       - name: Retain technical gate decision
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

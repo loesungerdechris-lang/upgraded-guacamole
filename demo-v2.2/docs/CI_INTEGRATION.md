@@ -2,14 +2,14 @@
 
 Der Demonstrator und die CI verwenden `scripts/run_demo.py`. Es gibt keinen zweiten
 Build- oder Evidence-Pfad. Der Runner erzeugt das Image, scannt dessen Digest,
-signiert SBOM, Governance-Mock und Evidence Manifest, liest die Nachweise aus der
+signiert SBOM, Governance-Mock, im M2-Profil Demo-Provenance und Evidence Manifest, liest die Nachweise aus der
 Registry zurück und prüft sie mit demselben Verifikator wie beim Offline-Aufruf.
 
 ## Auslöser und Gate
 
 | Auslöser | Verhalten |
 |---|---|
-| Pull Request | Sechs isolierte Abnahmejobs gegen den von GitHub ausgecheckten Prüfstand. |
+| Pull Request | Ein Golden-Job und zehn Mutationsjobs gegen den von GitHub ausgecheckten Prüfstand. |
 | Push auf `main` | Dieselbe Matrix auf dem integrierten Stand. |
 | `merge_group` | Dieselbe Prüfung für eine vorhandene Merge Queue. |
 | `workflow_dispatch` | Manueller Diagnoselauf. |
@@ -18,7 +18,7 @@ Registry zurück und prüft sie mit demselben Verifikator wie beim Offline-Aufru
 Diese Trigger sind in `.github/workflows/sentinel-demo.yml` konfiguriert. Es gibt keinen
 Pfadfilter, der die Prüfung bei bestimmten Änderungen auslassen könnte. Der Job
 `demo-gate` hat den Anzeigenamen **SENTINEL demo gate**, benötigt die komplette
-Matrix `acceptance` und wird mit `if: always()` ausgewertet. Die Erfolgserwartung
+Jobs `verify-golden` und `mutation-suite` und wird mit `if: always()` ausgewertet. Die Erfolgserwartung
 ist wörtlich `success`; fehlende, fehlerhafte, abgebrochene und übersprungene
 Ergebnisse öffnen das Gate nicht. Wird der gesamte Workflow abgebrochen, kann
 auch die Berichtserstellung ausbleiben; daraus entsteht kein erfolgreicher Check.
@@ -59,13 +59,17 @@ damit nicht unnötig zwei identische vollständige Prüfläufe ausgelöst werden
 
 ## Nachweise und Vertrauen
 
-Jeder Matrixjob lädt die öffentlichen Dateien aus `release/` als
-`sentinel-demo-<scenario>` hoch. Das Gesamtgate speichert seinen Bericht als
-`sentinel-demo-gate`. Die Artefakte sind sieben Tage aufbewahrt; ein dauerhaftes
-Auditarchiv ist damit noch nicht eingerichtet.
+Der Golden-Job erzeugt einmal `sentinel-m2-golden` und exportiert den Index-Digest
+als Job-Output. Die Szenariomatrix wird aus dem deklarativen Katalog generiert.
+Jeder Matrixjob lädt dasselbe Artefakt, prüft den Pin, erzeugt eine unabhängige Kopie
+und verlangt den exakten Prozesscode. Vorher und nachher muss Golden PASS liefern.
+Nur Cosign wird in den Mutationsjobs installiert; es findet dort keine Signierung statt.
+
+Öffentliche Golden-Evidenz, separater Pin, Szenarioberichte und der Gate-Bericht
+werden sieben Tage aufbewahrt. Ein dauerhaftes Auditarchiv ist damit nicht eingerichtet.
 
 `scripts/ci_gate.py` bewertet den von GitHub gelieferten Jobstatus. Ein manueller
-Aufruf mit `--acceptance-result success` ist kein Nachweis, dass eine Matrix
+Aufruf mit erfolgreichen Statusargumenten ist kein Nachweis, dass eine Matrix
 ausgeführt wurde. Der Gate-Bericht ist keine signierte Release-Receipt. Die
 kryptografische Prüfung findet weiterhin im echten Pipeline-Runner statt.
 
@@ -74,16 +78,16 @@ Governance-Mock. Keine `cabApproved:true`-Behauptung, keine Produktions-Secrets 
 keine unabhängige Release-Autorisierung. Das ist die technische erste CI-Stufe;
 Trivy, SLSA-Provenance, HSM und Azure Key Vault bleiben außerhalb dieses Sprints.
 Cosign verwendet bereits in-toto/DSSE-Umschläge; „ohne in-toto“ wird hier als
-Verzicht auf eine zusätzliche Provenance-Stufe umgesetzt.
+Verzicht auf eine SLSA-Provenance-Stufe umgesetzt. M2 ergänzt ein ausdrücklich eigenes Demo-Predicate.
 
 ## Stand der Prüfung
 
-Der Evidence-Kern hat den dokumentierten lokalen Registry-Lauf mit sechs
-Abnahmefällen bestanden. Die CI-Ergänzung wird lokal auf Gate-Entscheidungen und
-Workflow-Syntax geprüft. Ein gehosteter GitHub-Actions-Lauf, eine Branch-Protection-Änderung und ein Release sind keine Aussage dieses Dokuments.
-Der Draft-PR und seine Checks dokumentieren den jeweils aktuellen gehosteten Stand.
+M1 ist durch [PR #69](https://github.com/loesungerdechris-lang/upgraded-guacamole/pull/69)
+und [Run 35213885803](https://github.com/loesungerdechris-lang/upgraded-guacamole/actions/runs/35213885803)
+belegt. M2-Prüfergebnisse stehen in [M2_VALIDATION.md](M2_VALIDATION.md).
+Branch-Protection-Regeln und Produktionsreleases werden hier nicht geändert.
 
 Offizielle Referenzen:
 
-- [GitHub: Workflow-Syntax, Trigger und Job-Abhängigkeiten](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)
-- [GitHub: Wiederverwendbare Workflows](https://docs.github.com/en/actions/how-tos/reuse-automations/reuse-workflows)
+- [GitHub: Workflow-Syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax)
+- [GitHub: Download-Artifact v4.3.0](https://github.com/actions/download-artifact/tree/d3f86a106a0bac45b974a628896c90dbdf5c8093)

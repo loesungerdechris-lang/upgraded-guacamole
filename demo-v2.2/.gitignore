@@ -6,3 +6,4 @@ __pycache__/
 release/
 release-*/
 ci-gate/
+release-*.json
