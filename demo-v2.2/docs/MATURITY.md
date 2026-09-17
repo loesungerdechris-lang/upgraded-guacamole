@@ -1,4 +1,4 @@
-# Evidence Bundle v2.2 — M1 maturity
+# Evidence Bundle v2.2 — M1/M2 maturity
 
 **Architecture Demonstrator — DRAFT.** CI/CD and the verification framework are
 implemented. This is not a Compliance Demonstrator, a production release, a SLSA
@@ -6,19 +6,25 @@ level claim, or canonical Evidence v2.2 conformance. The executable profile is
 `sentinel-demo-mvp/v0.1`; `v2.2` in the directory and milestone title is the project
 working label.
 
-## Implemented and locally observed
+M1 hosted baseline: [PR #69](https://github.com/loesungerdechris-lang/upgraded-guacamole/pull/69),
+[successful run 35213885803](https://github.com/loesungerdechris-lang/upgraded-guacamole/actions/runs/35213885803),
+reviewed head `bbf9ce4d1b8a4b6d6df756e637b156668a95cdac`.
+M2 adds profile `sentinel-demo-m2/v0.1`, a sealed golden export and ten mutation
+cases. See [M2 contract](M2_PROFILE.md) and [validation](M2_VALIDATION.md).
+
+## M1 baseline evidence
 
 | Capability | Local evidence | Hosted GitHub evidence |
 |---|---|---|
-| One Rust binary, build and test | Passed | PR checks required |
-| Native loopback OCI registry and immutable image digest | Passed | PR checks required |
-| Real Syft CycloneDX SBOM for that digest | Passed | PR checks required |
-| Cosign SBOM, governance and manifest attestation round-trip | Passed | PR checks required |
-| verify-bundle reading real OCI manifests and blobs | Passed | PR checks required |
-| Online/offline/repeat decision equality | Passed | PR checks required |
-| Six positive/negative acceptance scenarios | 6/6 passed | All six matrix jobs required |
-| Verifier and CI gate tests | 13/13 passed before import | Rerun in PR |
-| Workflow syntax | actionlint passed before import | Adapted path validation and PR checks required |
+| One Rust binary, build and test | Passed | Passed in linked M1 run |
+| Native loopback OCI registry and immutable image digest | Passed | Passed in linked M1 run |
+| Real Syft CycloneDX SBOM for that digest | Passed | Passed in linked M1 run |
+| Cosign SBOM, governance and manifest attestation round-trip | Passed | Passed in linked M1 run |
+| verify-bundle reading real OCI manifests and blobs | Passed | Passed in linked M1 run |
+| Online/offline/repeat decision equality | Passed | Passed in linked M1 run |
+| Six positive/negative acceptance scenarios | 6/6 passed | All six M1 matrix jobs passed |
+| Verifier and CI gate tests | 13/13 passed before import | Passed in linked M1 run |
+| Workflow syntax | actionlint passed before import | Adapted path validation and Passed in linked M1 run |
 
 The local registry, attestation upload, download and signature verification were
 actually executed. They are not unimplemented placeholders. A successful local
@@ -45,13 +51,13 @@ or Class A signature floor is modified, and no security rule is weakened.
 
 ## Merge blockers
 
-- [ ] Real GitHub Actions run completed successfully for the reviewed revision.
-- [ ] OCI registry integration validated on GitHub's runner.
-- [ ] Cosign attestation round-trip validated on GitHub's runner.
-- [ ] verify-bundle against live OCI artifacts validated on GitHub's runner.
+- [x] M1 GitHub Actions run completed for the linked M1 revision. M2 needs its own run.
+- [x] M1 OCI registry integration validated on GitHub's runner.
+- [x] M1 Cosign attestation round-trip validated on GitHub's runner.
+- [x] M1 verify-bundle against live OCI artifacts validated on GitHub's runner.
 - [ ] Governance mock replaced or formally accepted for this architecture-only M1.
 - [ ] Required Evidence v2.2 acceptance suite completed. This PR implements only
-      the six-case MVP; the canonical 24-case suite is not claimed complete.
+      the six-case M1 and ten-negative-case M2 scope; the canonical 24-case suite is not claimed complete.
 - [ ] Temporary synthetic signing fixtures and isolated demo scope accepted by
       the human reviewer; applicable CODEOWNERS/repository checks satisfied.
 

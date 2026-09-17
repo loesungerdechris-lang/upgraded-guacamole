@@ -1,0 +1,6 @@
+{
+  "scenario": "invalid-signature",
+  "operation": "corrupt-signature",
+  "role": null,
+  "expectedExit": 30
+}

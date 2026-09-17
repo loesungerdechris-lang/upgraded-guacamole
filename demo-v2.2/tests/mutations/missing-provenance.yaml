@@ -1,0 +1,6 @@
+{
+  "scenario": "missing-provenance",
+  "operation": "remove-payload",
+  "role": "provenance",
+  "expectedExit": 13
+}

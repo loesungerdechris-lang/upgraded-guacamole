@@ -1,0 +1,6 @@
+{
+  "scenario": "missing-manifest",
+  "operation": "remove-manifest",
+  "role": null,
+  "expectedExit": 10
+}

@@ -15,10 +15,12 @@ import tempfile
 from typing import Any, Callable
 
 PROFILE = "sentinel-demo-mvp/v0.1"
+M2_PROFILE = "sentinel-demo-m2/v0.1"
 OCI_MANIFEST = "application/vnd.oci.image.manifest.v1+json"
 BUNDLE_MEDIA = "application/vnd.dev.sigstore.bundle.v0.3+json"
 ROOT_TYPE = "https://sentinel.example/demo/evidence-manifest/v1"
 GOVERNANCE_TYPE = "https://sentinel.example/demo/governance/v1"
+PROVENANCE_TYPE = "https://sentinel.example/demo/provenance/v1"
 SBOM_TYPE = "https://cyclonedx.org/bom"
 STATEMENT_TYPE = "https://in-toto.io/Statement/v0.1"
 MAX_OBJECT_BYTES = 64 * 1024 * 1024
@@ -125,12 +127,33 @@ def _validate_content(value: bytes, expected: dict[str, Any]) -> None:
         raise _Decision("BLOCKED", "DIGEST_MISMATCH")
 
 
-def _result(status: str, reason: str, checks: dict[str, bool], image_digest: str) -> dict[str, Any]:
-    exit_codes = {"PASS": 0, "HOLD": 2, "BLOCKED": 3, "ERROR": 4}
+def _result(
+    profile: str,
+    status: str,
+    reason: str,
+    checks: dict[str, bool],
+    image_digest: str,
+) -> dict[str, Any]:
+    if profile == M2_PROFILE:
+        exit_code = {
+            "VERIFIED": 0,
+            "MISSING_MANIFEST": 10,
+            "MISSING_SBOM": 11,
+            "MISSING_GOVERNANCE": 12,
+            "MISSING_PROVENANCE": 13,
+            "MISSING_ATTESTATION": 14,
+            "DIGEST_MISMATCH": 20,
+            "INVALID_SIGNATURE": 30,
+            "SUBJECT_MISMATCH": 40,
+            "POLICY_VIOLATION": 50,
+            "UNKNOWN_PREDICATE": 60,
+        }.get(reason, 90)
+    else:
+        exit_code = {"PASS": 0, "HOLD": 2, "BLOCKED": 3, "ERROR": 4}[status]
     return {
-        "profile": PROFILE,
+        "profile": profile,
         "status": status,
-        "exitCode": exit_codes[status],
+        "exitCode": exit_code,
         "reasonCodes": [reason],
         "checks": checks,
         "imageDigest": image_digest,
@@ -155,7 +178,14 @@ def _read_descriptor(reader: Callable[[str], bytes], expected: dict[str, Any], b
     return value
 
 
-def _validate_artifact(artifact_bytes: bytes, artifact_ref: dict[str, Any], image_digest: str, image_size: int, predicate_type: str) -> None:
+def _validate_artifact(
+    artifact_bytes: bytes,
+    artifact_ref: dict[str, Any],
+    image_digest: str,
+    image_size: int,
+    predicate_type: str,
+    profile: str,
+) -> None:
     artifact = _json_object(artifact_bytes, "MALFORMED_OCI_MANIFEST")
     if artifact.get("schemaVersion") != 2 or artifact.get("mediaType") != OCI_MANIFEST:
         raise _Decision("ERROR", "UNSUPPORTED_OCI_MANIFEST")
@@ -178,12 +208,38 @@ def _validate_artifact(artifact_bytes: bytes, artifact_ref: dict[str, Any], imag
         raise _Decision("BLOCKED", "DESCRIPTOR_MISMATCH")
     subject = artifact.get("subject")
     if not isinstance(subject, dict):
-        raise _Decision("BLOCKED", "CONTEXT_MISMATCH")
+        reason = "SUBJECT_MISMATCH" if profile == M2_PROFILE else "CONTEXT_MISMATCH"
+        raise _Decision("BLOCKED", reason)
     if (subject.get("digest") != image_digest or subject.get("mediaType") != OCI_MANIFEST or subject.get("size") != image_size):
-        raise _Decision("BLOCKED", "CONTEXT_MISMATCH")
+        reason = "SUBJECT_MISMATCH" if profile == M2_PROFILE else "CONTEXT_MISMATCH"
+        raise _Decision("BLOCKED", reason)
 
 
-def _verify_and_extract_statement(bundle_bytes: bytes, predicate_type: str, image_digest: str, public_key_bytes: bytes, cosign_binary: str) -> dict[str, Any]:
+def _extract_statement(bundle_bytes: bytes) -> dict[str, Any]:
+    bundle = _json_object(bundle_bytes, "MALFORMED_BUNDLE")
+    if bundle.get("mediaType") != BUNDLE_MEDIA:
+        raise _Decision("ERROR", "MALFORMED_BUNDLE")
+    envelope = bundle.get("dsseEnvelope")
+    if not isinstance(envelope, dict) or envelope.get("payloadType") != "application/vnd.in-toto+json":
+        raise _Decision("ERROR", "MALFORMED_BUNDLE")
+    payload = envelope.get("payload")
+    if not isinstance(payload, str):
+        raise _Decision("ERROR", "MALFORMED_BUNDLE")
+    try:
+        statement_bytes = base64.b64decode(payload, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise _Decision("ERROR", "MALFORMED_BUNDLE") from exc
+    return _json_object(statement_bytes, "MALFORMED_STATEMENT")
+
+
+def _verify_and_extract_statement(
+    bundle_bytes: bytes,
+    predicate_type: str,
+    image_digest: str,
+    public_key_bytes: bytes,
+    cosign_binary: str,
+    profile: str,
+) -> dict[str, Any]:
     if not isinstance(cosign_binary, str) or not cosign_binary:
         raise _Decision("ERROR", "CRYPTO_VERIFIER_ERROR")
     if os.path.dirname(cosign_binary):
@@ -193,6 +249,13 @@ def _verify_and_extract_statement(bundle_bytes: bytes, predicate_type: str, imag
         if found_cosign is None:
             raise _Decision("ERROR", "CRYPTO_VERIFIER_ERROR")
         resolved_cosign = str(Path(found_cosign).resolve())
+    statement = _extract_statement(bundle_bytes) if profile == M2_PROFILE else None
+    actual_predicate_type = predicate_type
+    if statement is not None:
+        actual_predicate_type = statement.get("predicateType")
+        if not isinstance(actual_predicate_type, str) or not actual_predicate_type:
+            raise _Decision("ERROR", "MALFORMED_STATEMENT")
+
     with tempfile.TemporaryDirectory(prefix="sentinel-cosign-verify-") as directory:
         bundle_path = Path(directory) / "bundle.json"
         public_key_snapshot = Path(directory) / "public.pem"
@@ -202,10 +265,15 @@ def _verify_and_extract_statement(bundle_bytes: bytes, predicate_type: str, imag
         cache_path.mkdir()
         command = [
             resolved_cosign, "verify-blob-attestation", "--key", str(public_key_snapshot),
-            "--bundle", str(bundle_path), "--type", predicate_type,
-            "--insecure-ignore-tlog", "--digest", image_digest.removeprefix("sha256:"),
-            "--digestAlg", "sha256",
+            "--bundle", str(bundle_path), "--type", actual_predicate_type,
+            "--insecure-ignore-tlog",
         ]
+        if profile == M2_PROFILE:
+            command.append("--check-claims=false")
+        else:
+            command.extend(
+                ["--digest", image_digest.removeprefix("sha256:"), "--digestAlg", "sha256"]
+            )
         try:
             completed = subprocess.run(
                 command, check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -221,53 +289,80 @@ def _verify_and_extract_statement(bundle_bytes: bytes, predicate_type: str, imag
         if completed.returncode != 0:
             raise _Decision("BLOCKED", "INVALID_SIGNATURE")
 
-    bundle = _json_object(bundle_bytes, "MALFORMED_BUNDLE")
-    if bundle.get("mediaType") != BUNDLE_MEDIA:
-        raise _Decision("ERROR", "MALFORMED_BUNDLE")
-    envelope = bundle.get("dsseEnvelope")
-    if not isinstance(envelope, dict) or envelope.get("payloadType") != "application/vnd.in-toto+json":
-        raise _Decision("ERROR", "MALFORMED_BUNDLE")
-    payload = envelope.get("payload")
-    if not isinstance(payload, str):
-        raise _Decision("ERROR", "MALFORMED_BUNDLE")
-    try:
-        statement_bytes = base64.b64decode(payload, validate=True)
-    except (ValueError, binascii.Error) as exc:
-        raise _Decision("ERROR", "MALFORMED_BUNDLE") from exc
-    statement = _json_object(statement_bytes, "MALFORMED_STATEMENT")
-    if statement.get("_type") != STATEMENT_TYPE or statement.get("predicateType") != predicate_type:
+    if statement is None:
+        statement = _extract_statement(bundle_bytes)
+    if statement.get("_type") != STATEMENT_TYPE:
         raise _Decision("BLOCKED", "CONTEXT_MISMATCH")
+    if statement.get("predicateType") != predicate_type:
+        reason = "UNKNOWN_PREDICATE" if profile == M2_PROFILE else "CONTEXT_MISMATCH"
+        raise _Decision("BLOCKED", reason)
     subjects = statement.get("subject")
     if not isinstance(subjects, list) or len(subjects) != 1:
-        raise _Decision("BLOCKED", "CONTEXT_MISMATCH")
+        reason = "SUBJECT_MISMATCH" if profile == M2_PROFILE else "CONTEXT_MISMATCH"
+        raise _Decision("BLOCKED", reason)
     subject = subjects[0]
     if not isinstance(subject, dict) or not isinstance(subject.get("name"), str) or not subject["name"]:
-        raise _Decision("BLOCKED", "CONTEXT_MISMATCH")
+        reason = "SUBJECT_MISMATCH" if profile == M2_PROFILE else "CONTEXT_MISMATCH"
+        raise _Decision("BLOCKED", reason)
     subject_digest = subject.get("digest")
     if not isinstance(subject_digest, dict) or set(subject_digest) != {"sha256"}:
-        raise _Decision("BLOCKED", "CONTEXT_MISMATCH")
+        reason = "SUBJECT_MISMATCH" if profile == M2_PROFILE else "CONTEXT_MISMATCH"
+        raise _Decision("BLOCKED", reason)
     if subject_digest.get("sha256") != image_digest.removeprefix("sha256:"):
-        raise _Decision("BLOCKED", "CONTEXT_MISMATCH")
+        reason = "SUBJECT_MISMATCH" if profile == M2_PROFILE else "CONTEXT_MISMATCH"
+        raise _Decision("BLOCKED", reason)
     predicate = statement.get("predicate")
     if not isinstance(predicate, dict):
         raise _Decision("ERROR", "MALFORMED_STATEMENT")
     return predicate
 
 
-def _read_signed_artifact(reference: dict[str, Any], predicate_type: str, image_digest: str, image_size: int, public_key_bytes: bytes, store: Any, cosign_binary: str, budget: _Budget, missing_reason: str) -> dict[str, Any]:
+def _read_signed_artifact(
+    reference: dict[str, Any],
+    predicate_type: str,
+    image_digest: str,
+    image_size: int,
+    public_key_bytes: bytes,
+    store: Any,
+    cosign_binary: str,
+    budget: _Budget,
+    missing_payload_reason: str,
+    profile: str,
+    missing_artifact_reason: str | None = None,
+) -> dict[str, Any]:
     _artifact_ref(reference)
-    artifact_bytes = _read_descriptor(store.read_manifest, reference["artifact"], budget, missing_reason)
-    _validate_artifact(artifact_bytes, reference, image_digest, image_size, predicate_type)
-    bundle_bytes = _read_descriptor(store.read_blob, reference["payload"], budget, missing_reason)
-    return _verify_and_extract_statement(bundle_bytes, predicate_type, image_digest, public_key_bytes, cosign_binary)
+    artifact_bytes = _read_descriptor(
+        store.read_manifest,
+        reference["artifact"],
+        budget,
+        missing_artifact_reason or missing_payload_reason,
+    )
+    _validate_artifact(
+        artifact_bytes, reference, image_digest, image_size, predicate_type, profile
+    )
+    bundle_bytes = _read_descriptor(
+        store.read_blob, reference["payload"], budget, missing_payload_reason
+    )
+    return _verify_and_extract_statement(
+        bundle_bytes,
+        predicate_type,
+        image_digest,
+        public_key_bytes,
+        cosign_binary,
+        profile,
+    )
 
 
-def _validate_policy(policy: dict[str, Any]) -> None:
+def _validate_policy(policy: dict[str, Any], profile: str) -> None:
     expected = {
-        "profile": PROFILE,
+        "profile": profile,
         "allowMockGovernance": True,
         "productionAcceptance": False,
-        "requiredRoles": ["sbom", "governance"],
+        "requiredRoles": (
+            ["sbom", "governance", "provenance"]
+            if profile == M2_PROFILE
+            else ["sbom", "governance"]
+        ),
         "sbomSpecVersion": "1.6",
     }
     _exact_keys(policy, set(expected), "MALFORMED_POLICY")
@@ -279,15 +374,22 @@ def _validate_policy(policy: dict[str, Any]) -> None:
         raise _Decision("BLOCKED", "POLICY_VIOLATION")
 
 
-def _validate_root_predicate(predicate: dict[str, Any], request: dict[str, Any], image_digest: str) -> dict[str, dict[str, Any]]:
+def _validate_root_predicate(
+    predicate: dict[str, Any],
+    request: dict[str, Any],
+    image_digest: str,
+    profile: str,
+) -> dict[str, dict[str, Any]]:
     _exact_keys(predicate, {"profile", "runId", "imageDigest", "policySha256", "entries"}, "MALFORMED_MANIFEST")
-    if (predicate.get("profile") != PROFILE or predicate.get("runId") != request["runId"] or predicate.get("imageDigest") != image_digest or predicate.get("policySha256") != request["policySha256"]):
+    if (predicate.get("profile") != profile or predicate.get("runId") != request["runId"] or predicate.get("imageDigest") != image_digest or predicate.get("policySha256") != request["policySha256"]):
         raise _Decision("BLOCKED", "CONTEXT_MISMATCH")
     entries = predicate.get("entries")
     if not isinstance(entries, list):
         raise _Decision("ERROR", "MALFORMED_MANIFEST")
     by_role: dict[str, dict[str, Any]] = {}
     expected_types = {"sbom": SBOM_TYPE, "governance": GOVERNANCE_TYPE}
+    if profile == M2_PROFILE:
+        expected_types["provenance"] = PROVENANCE_TYPE
     for entry in entries:
         if not isinstance(entry, dict):
             raise _Decision("ERROR", "MALFORMED_MANIFEST")
@@ -308,24 +410,93 @@ def _validate_sbom(predicate: dict[str, Any]) -> None:
         raise _Decision("BLOCKED", "INVALID_SBOM")
 
 
-def _validate_governance(predicate: dict[str, Any], request: dict[str, Any], image_digest: str) -> None:
+def _validate_governance(
+    predicate: dict[str, Any],
+    request: dict[str, Any],
+    image_digest: str,
+    profile: str,
+) -> None:
     _exact_keys(predicate, {"profile", "fixture", "productionApproval", "runId", "imageDigest", "policySha256", "checks"}, "MALFORMED_GOVERNANCE")
     expected_checks = {"buildPassed": True, "testsPassed": True, "sbomGenerated": True}
     checks = predicate.get("checks")
-    if (predicate.get("profile") != PROFILE or predicate.get("fixture") is not True or predicate.get("productionApproval") is not False or predicate.get("runId") != request["runId"] or predicate.get("imageDigest") != image_digest or predicate.get("policySha256") != request["policySha256"] or checks != expected_checks or not isinstance(checks, dict) or any(value is not True for value in checks.values())):
+    context_matches = (
+        predicate.get("profile") == profile
+        and predicate.get("fixture") is True
+        and predicate.get("productionApproval") is False
+        and predicate.get("runId") == request["runId"]
+        and predicate.get("imageDigest") == image_digest
+        and predicate.get("policySha256") == request["policySha256"]
+    )
+    if not context_matches:
         raise _Decision("BLOCKED", "INVALID_GOVERNANCE")
+    if profile != M2_PROFILE:
+        if checks != expected_checks or not isinstance(checks, dict) or any(value is not True for value in checks.values()):
+            raise _Decision("BLOCKED", "INVALID_GOVERNANCE")
+        return
+    if (
+        not isinstance(checks, dict)
+        or set(checks) != set(expected_checks)
+        or any(not isinstance(value, bool) for value in checks.values())
+    ):
+        raise _Decision("BLOCKED", "INVALID_GOVERNANCE")
+    if any(value is not True for value in checks.values()):
+        raise _Decision("BLOCKED", "POLICY_VIOLATION")
+
+
+def _validate_provenance(
+    predicate: dict[str, Any],
+    request: dict[str, Any],
+    image_digest: str,
+) -> None:
+    """Validate the custom demo predicate; this is deliberately not a SLSA claim."""
+    _exact_keys(
+        predicate,
+        {
+            "profile",
+            "fixture",
+            "runId",
+            "imageDigest",
+            "policySha256",
+            "sourceSha256",
+            "binarySha256",
+            "builder",
+        },
+        "MALFORMED_PROVENANCE",
+    )
+    if (
+        predicate.get("profile") != M2_PROFILE
+        or predicate.get("fixture") is not True
+        or predicate.get("runId") != request["runId"]
+        or predicate.get("imageDigest") != image_digest
+        or predicate.get("policySha256") != request["policySha256"]
+        or predicate.get("builder") != "sentinel-demo"
+        or not isinstance(predicate.get("sourceSha256"), str)
+        or _DIGEST.fullmatch(predicate["sourceSha256"]) is None
+        or not isinstance(predicate.get("binarySha256"), str)
+        or _DIGEST.fullmatch(predicate["binarySha256"]) is None
+    ):
+        raise _Decision("BLOCKED", "INVALID_PROVENANCE")
 
 
 def verify_bundle(request: dict[str, Any], policy_bytes: bytes, public_key_path: Path, store: Any, cosign_binary: str) -> dict[str, Any]:
     """Verify a completely pinned demo evidence graph and return a stable decision."""
+    requested_profile = (
+        request.get("profile")
+        if isinstance(request, dict) and isinstance(request.get("profile"), str)
+        else PROFILE
+    )
+    profile = M2_PROFILE if requested_profile == M2_PROFILE else PROFILE
     checks = {"request": False, "policy": False, "publicKey": False, "image": False, "manifest": False, "sbom": False, "governance": False}
+    if profile == M2_PROFILE:
+        checks["provenance"] = False
     image_digest = ""
     try:
         if not isinstance(request, dict):
             raise _Decision("ERROR", "MALFORMED_REQUEST")
         _exact_keys(request, {"profile", "image", "manifest", "runId", "policySha256", "publicKeySha256"}, "MALFORMED_REQUEST")
-        if request.get("profile") != PROFILE:
+        if request.get("profile") not in {PROFILE, M2_PROFILE}:
             raise _Decision("ERROR", "UNSUPPORTED_PROFILE")
+        profile = request["profile"]
         image = request.get("image")
         if not isinstance(image, str) or image.count("@") != 1:
             raise _Decision("ERROR", "MALFORMED_REQUEST")
@@ -345,7 +516,7 @@ def verify_bundle(request: dict[str, Any], policy_bytes: bytes, public_key_path:
         budget = _Budget(len(policy_bytes))
         if _sha256(policy_bytes) != request["policySha256"]:
             raise _Decision("BLOCKED", "POLICY_MISMATCH")
-        _validate_policy(_json_object(policy_bytes, "MALFORMED_POLICY"))
+        _validate_policy(_json_object(policy_bytes, "MALFORMED_POLICY"), profile)
         checks["policy"] = True
 
         try:
@@ -373,21 +544,77 @@ def verify_bundle(request: dict[str, Any], policy_bytes: bytes, public_key_path:
             _read_descriptor(store.read_blob, _descriptor(layer), budget, "MISSING_IMAGE")
         checks["image"] = True
 
-        root_predicate = _read_signed_artifact(request["manifest"], ROOT_TYPE, image_digest, len(image_bytes), key_bytes, store, cosign_binary, budget, "MISSING_MANIFEST")
-        entries = _validate_root_predicate(root_predicate, request, image_digest)
+        root_predicate = _read_signed_artifact(
+            request["manifest"],
+            ROOT_TYPE,
+            image_digest,
+            len(image_bytes),
+            key_bytes,
+            store,
+            cosign_binary,
+            budget,
+            "MISSING_MANIFEST",
+            profile,
+        )
+        entries = _validate_root_predicate(root_predicate, request, image_digest, profile)
         checks["manifest"] = True
 
         sbom_entry = entries["sbom"]
-        sbom = _read_signed_artifact({"artifact": sbom_entry["artifact"], "payload": sbom_entry["payload"]}, SBOM_TYPE, image_digest, len(image_bytes), key_bytes, store, cosign_binary, budget, "MISSING_SBOM")
+        sbom = _read_signed_artifact(
+            {"artifact": sbom_entry["artifact"], "payload": sbom_entry["payload"]},
+            SBOM_TYPE,
+            image_digest,
+            len(image_bytes),
+            key_bytes,
+            store,
+            cosign_binary,
+            budget,
+            "MISSING_SBOM",
+            profile,
+            "MISSING_ATTESTATION" if profile == M2_PROFILE else None,
+        )
         _validate_sbom(sbom)
         checks["sbom"] = True
 
         governance_entry = entries["governance"]
-        governance = _read_signed_artifact({"artifact": governance_entry["artifact"], "payload": governance_entry["payload"]}, GOVERNANCE_TYPE, image_digest, len(image_bytes), key_bytes, store, cosign_binary, budget, "MISSING_GOVERNANCE")
-        _validate_governance(governance, request, image_digest)
+        governance = _read_signed_artifact(
+            {"artifact": governance_entry["artifact"], "payload": governance_entry["payload"]},
+            GOVERNANCE_TYPE,
+            image_digest,
+            len(image_bytes),
+            key_bytes,
+            store,
+            cosign_binary,
+            budget,
+            "MISSING_GOVERNANCE",
+            profile,
+            "MISSING_ATTESTATION" if profile == M2_PROFILE else None,
+        )
+        _validate_governance(governance, request, image_digest, profile)
         checks["governance"] = True
-        return _result("PASS", "VERIFIED", checks, image_digest)
+
+        if profile == M2_PROFILE:
+            provenance_entry = entries["provenance"]
+            provenance = _read_signed_artifact(
+                {
+                    "artifact": provenance_entry["artifact"],
+                    "payload": provenance_entry["payload"],
+                },
+                PROVENANCE_TYPE,
+                image_digest,
+                len(image_bytes),
+                key_bytes,
+                store,
+                cosign_binary,
+                budget,
+                "MISSING_PROVENANCE",
+                profile,
+                "MISSING_ATTESTATION",
+            )
+            _validate_provenance(provenance, request, image_digest)
+            checks["provenance"] = True
+        return _result(profile, "PASS", "VERIFIED", checks, image_digest)
     except _Decision as decision:
-        return _result(decision.status, decision.reason, checks, image_digest)
+        return _result(profile, decision.status, decision.reason, checks, image_digest)
     except Exception:
-        return _result("ERROR", "INTERNAL_ERROR", checks, image_digest)
+        return _result(profile, "ERROR", "INTERNAL_ERROR", checks, image_digest)

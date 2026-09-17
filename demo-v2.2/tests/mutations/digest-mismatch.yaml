@@ -1,0 +1,6 @@
+{
+  "scenario": "digest-mismatch",
+  "operation": "corrupt-payload",
+  "role": "sbom",
+  "expectedExit": 20
+}

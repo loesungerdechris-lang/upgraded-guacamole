@@ -1,0 +1,12 @@
+flowchart LR
+  %% Generated M2 traceability; canonical v2.2 mapping is not established.
+  R1["M2-MUT-06"] --> T1["digest-mismatch"] --> E1["Exit 20: observed"]
+  R2["M2-MUT-09"] --> T2["governance-fail"] --> E2["Exit 50: observed"]
+  R3["M2-MUT-07"] --> T3["invalid-signature"] --> E3["Exit 30: observed"]
+  R4["M2-MUT-05"] --> T4["missing-attestation"] --> E4["Exit 14: observed"]
+  R5["M2-MUT-04"] --> T5["missing-governance"] --> E5["Exit 12: observed"]
+  R6["M2-MUT-01"] --> T6["missing-manifest"] --> E6["Exit 10: observed"]
+  R7["M2-MUT-03"] --> T7["missing-provenance"] --> E7["Exit 13: observed"]
+  R8["M2-MUT-02"] --> T8["missing-sbom"] --> E8["Exit 11: observed"]
+  R9["M2-MUT-08"] --> T9["subject-mismatch"] --> E9["Exit 40: observed"]
+  R10["M2-MUT-10"] --> T10["unknown-predicate"] --> E10["Exit 60: observed"]

@@ -37,3 +37,29 @@ pytest -q tests/test_receipt_verifier.py
 ## Risk notes
 
 Call out any remaining risks, deferred work or assumptions.
+
+## Evidence v2.2 crosswalk impact
+
+Select all applicable changes; the first option excludes the others:
+
+- [ ] No requirements affected
+- [ ] Existing requirements changed
+- [ ] New provisional requirements added
+- [ ] Coverage status changed
+- [ ] Exit-code contract changed
+- [ ] Known limitations updated
+- [ ] Baseline observation/source pins updated with a new reviewed run
+- [ ] Generated Markdown/Mermaid/baseline views regenerated and validator passed
+
+Affected IDs:
+
+CI proof (keep baseline and current run separate):
+
+- Workflow:
+- Run:
+- Commit:
+- Expected tests:
+- Observed tests:
+- Canonical specification reference, or explicitly unmapped:
+
+Crosswalk consistency and successful CI do not replace human approval or establish production trust.

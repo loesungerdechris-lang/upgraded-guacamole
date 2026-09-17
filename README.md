@@ -25,14 +25,44 @@ tests/         Verifier, fixtures, and red-team style tests
 .github/       CI and repository hygiene checks
 ```
 
-## Architecture demonstrator — M1 (draft)
+## Architecture demonstrator — M1/M2 (draft)
 
 [`demo-v2.2/`](demo-v2.2/README.md) contains the isolated Evidence Bundle CI/CD
-demonstrator. It uses one runner locally and in GitHub Actions, a real local OCI
-registry, Syft/Cosign evidence, and a six-case acceptance matrix. It is an
-architecture demonstrator with mocked governance, not a compliance assessment or
-production release authority. The existing core and receipt/release gates remain
-in force. Scope and merge blockers: [M1 maturity](demo-v2.2/docs/MATURITY.md).
+demonstrator. M2 verifies one live OCI/Syft/Cosign golden bundle and ten declarative
+mutations with exact process exit codes. The same runner is used locally and in CI.
+
+| M2 coverage category | Validated requirements |
+|---|---|
+| Evidence presence | ✅ Manifest · SBOM · demo provenance · governance · attestation wrapper — **5/5** |
+| Integrity and binding | ✅ Digest · signature · subject — **3/3** |
+| Demo policy and predicate | ✅ Failed mock control · unexpected predicate type — **2/2** |
+
+**COMPLETE (M2 Scope): 10/10 expected rejections, 32/32 tests.** This is the frozen
+result of [run 35219131191](https://github.com/loesungerdechris-lang/upgraded-guacamole/actions/runs/35219131191)
+for head `d475430`; it is not a claim about every later revision.
+The [contractual coverage matrix](docs/mutation-coverage-matrix.md) links requirements,
+mutations, numeric outcomes and job evidence. [Mermaid source](docs/mutation-coverage.mmd).
+
+Governance remains mocked, provenance is demo-only, and production trust is open.
+Scope and human merge decisions: [maturity](demo-v2.2/docs/MATURITY.md).
+Existing core and receipt/release gates remain in force.
+
+The [M2 baseline](docs/acceptance/m2-baseline.md) fixes the later `66732c7` run.
+The [v2.2 crosswalk](docs/evidence-bundle-v2.2/crosswalk.md) now links local
+requirements, signed evidence, verifier rules, mutation exits and CI proof.
+Its schema, source pins and generated views are checked in the same workflow;
+`crosswalk-gate` and `evidence-total-gate` require actual predecessor success.
+
+| Milestone | Technical status |
+|---|---|
+| M1 CI/CD | Demonstrated; PR #69 remains draft |
+| M2 mutation validation | Baseline recorded; PR #70 remains draft |
+| M3 Governance Realization | [Planned](docs/evidence-bundle-v2.2/m3-governance-realization.md); mock remains |
+| M4 production trust anchors | Open |
+| M5 full v2.2 acceptance | Open; canonical specification mapping not established |
+
+[Review and merge enforcement](docs/evidence-bundle-v2.2/review-and-gates.md)
+documents the remaining human-review and server-side configuration work.
 
 ## Implemented bootstrap checks
 

@@ -1,0 +1,374 @@
+{
+  "version": "2.2",
+  "crosswalk_revision": "0.1",
+  "status": "draft",
+  "validated_scope": "M2",
+  "specification_status": "canonical-source-not-established",
+  "v22_coverage": "incomplete",
+  "production_acceptance": false,
+  "limitations": {
+    "governance_mock": true,
+    "demo_provenance": true,
+    "hsm_validated": false,
+    "azure_key_vault_validated": false,
+    "production_trust_established": false
+  },
+  "baseline": {
+    "path": "docs/evidence-bundle-v2.2/evidence/m2-observation.json",
+    "sha256": "sha256:3b099f770e8a59568e6be9c5d8166d0c1f54a6cb536d30d5cea7accede3e68d0",
+    "commit": "66732c7bfddd7812222827763336c732cf05461a",
+    "run_id": 35221177108
+  },
+  "requirements": [
+    {
+      "id": "M2-MUT-01",
+      "title": "Manifest Required",
+      "milestone": "M2",
+      "coverage": "covered",
+      "canonical_ref": null,
+      "implementation": [
+        "demo-v2.2/sentinel_demo/verify.py"
+      ],
+      "rule": "_read_signed_artifact",
+      "evidence": [
+        {
+          "role": "manifest",
+          "predicate_type": "https://sentinel.example/demo/evidence-manifest/v1",
+          "locator": "request.manifest.artifact + payload"
+        }
+      ],
+      "tests": [
+        {
+          "scenario": "missing-manifest",
+          "exit_name": "MISSING_MANIFEST",
+          "exit_code": 10
+        }
+      ],
+      "related_tests": [],
+      "limitation": "Local M2 demo contract; software key, mock governance and demo provenance; no canonical v2.2 mapping."
+    },
+    {
+      "id": "M2-MUT-02",
+      "title": "SBOM Required",
+      "milestone": "M2",
+      "coverage": "covered",
+      "canonical_ref": null,
+      "implementation": [
+        "demo-v2.2/sentinel_demo/verify.py"
+      ],
+      "rule": "_read_signed_artifact",
+      "evidence": [
+        {
+          "role": "sbom",
+          "predicate_type": "https://cyclonedx.org/bom",
+          "locator": "inventory.entries[role=sbom].payload"
+        }
+      ],
+      "tests": [
+        {
+          "scenario": "missing-sbom",
+          "exit_name": "MISSING_SBOM",
+          "exit_code": 11
+        }
+      ],
+      "related_tests": [],
+      "limitation": "Local M2 demo contract; software key, mock governance and demo provenance; no canonical v2.2 mapping."
+    },
+    {
+      "id": "M2-MUT-03",
+      "title": "Demo Provenance Required",
+      "milestone": "M2",
+      "coverage": "covered",
+      "canonical_ref": null,
+      "implementation": [
+        "demo-v2.2/sentinel_demo/verify.py"
+      ],
+      "rule": "_read_signed_artifact",
+      "evidence": [
+        {
+          "role": "provenance",
+          "predicate_type": "https://sentinel.example/demo/provenance/v1",
+          "locator": "inventory.entries[role=provenance].payload"
+        }
+      ],
+      "tests": [
+        {
+          "scenario": "missing-provenance",
+          "exit_name": "MISSING_PROVENANCE",
+          "exit_code": 13
+        }
+      ],
+      "related_tests": [],
+      "limitation": "Local M2 demo contract; software key, mock governance and demo provenance; no canonical v2.2 mapping."
+    },
+    {
+      "id": "M2-MUT-04",
+      "title": "Governance Payload Required",
+      "milestone": "M2",
+      "coverage": "covered",
+      "canonical_ref": null,
+      "implementation": [
+        "demo-v2.2/sentinel_demo/verify.py"
+      ],
+      "rule": "_read_signed_artifact",
+      "evidence": [
+        {
+          "role": "governance",
+          "predicate_type": "https://sentinel.example/demo/governance/v1",
+          "locator": "inventory.entries[role=governance].payload"
+        }
+      ],
+      "tests": [
+        {
+          "scenario": "missing-governance",
+          "exit_name": "MISSING_GOVERNANCE",
+          "exit_code": 12
+        }
+      ],
+      "related_tests": [],
+      "limitation": "Local M2 demo contract; software key, mock governance and demo provenance; no canonical v2.2 mapping."
+    },
+    {
+      "id": "M2-MUT-05",
+      "title": "Attestation Wrapper Required",
+      "milestone": "M2",
+      "coverage": "covered",
+      "canonical_ref": null,
+      "implementation": [
+        "demo-v2.2/sentinel_demo/verify.py"
+      ],
+      "rule": "_read_signed_artifact",
+      "evidence": [
+        {
+          "role": "governance",
+          "predicate_type": "https://sentinel.example/demo/governance/v1",
+          "locator": "inventory.entries[role=governance].artifact"
+        }
+      ],
+      "tests": [
+        {
+          "scenario": "missing-attestation",
+          "exit_name": "MISSING_ATTESTATION",
+          "exit_code": 14
+        }
+      ],
+      "related_tests": [],
+      "limitation": "Local M2 demo contract; software key, mock governance and demo provenance; no canonical v2.2 mapping."
+    },
+    {
+      "id": "M2-MUT-06",
+      "title": "Digest Integrity",
+      "milestone": "M2",
+      "coverage": "covered",
+      "canonical_ref": null,
+      "implementation": [
+        "demo-v2.2/sentinel_demo/verify.py"
+      ],
+      "rule": "_validate_content",
+      "evidence": [
+        {
+          "role": "sbom",
+          "predicate_type": "https://cyclonedx.org/bom",
+          "locator": "OCI descriptors and actual CAS bytes"
+        }
+      ],
+      "tests": [
+        {
+          "scenario": "digest-mismatch",
+          "exit_name": "DIGEST_MISMATCH",
+          "exit_code": 20
+        }
+      ],
+      "related_tests": [],
+      "limitation": "Local M2 demo contract; software key, mock governance and demo provenance; no canonical v2.2 mapping."
+    },
+    {
+      "id": "M2-MUT-07",
+      "title": "Signature Validation",
+      "milestone": "M2",
+      "coverage": "covered",
+      "canonical_ref": null,
+      "implementation": [
+        "demo-v2.2/sentinel_demo/verify.py"
+      ],
+      "rule": "_verify_and_extract_statement",
+      "evidence": [
+        {
+          "role": "manifest",
+          "predicate_type": "https://sentinel.example/demo/evidence-manifest/v1",
+          "locator": "root Sigstore bundle DSSE signature"
+        }
+      ],
+      "tests": [
+        {
+          "scenario": "invalid-signature",
+          "exit_name": "INVALID_SIGNATURE",
+          "exit_code": 30
+        }
+      ],
+      "related_tests": [],
+      "limitation": "Local M2 demo contract; software key, mock governance and demo provenance; no canonical v2.2 mapping."
+    },
+    {
+      "id": "M2-MUT-08",
+      "title": "Subject Binding",
+      "milestone": "M2",
+      "coverage": "covered",
+      "canonical_ref": null,
+      "implementation": [
+        "demo-v2.2/sentinel_demo/verify.py"
+      ],
+      "rule": "_verify_and_extract_statement",
+      "evidence": [
+        {
+          "role": "governance",
+          "predicate_type": "https://sentinel.example/demo/governance/v1",
+          "locator": "signed statement subject.digest.sha256"
+        }
+      ],
+      "tests": [
+        {
+          "scenario": "subject-mismatch",
+          "exit_name": "SUBJECT_MISMATCH",
+          "exit_code": 40
+        }
+      ],
+      "related_tests": [],
+      "limitation": "Local M2 demo contract; software key, mock governance and demo provenance; no canonical v2.2 mapping."
+    },
+    {
+      "id": "M2-MUT-09",
+      "title": "Failed Mock Control Rejected",
+      "milestone": "M2",
+      "coverage": "covered",
+      "canonical_ref": null,
+      "implementation": [
+        "demo-v2.2/sentinel_demo/verify.py"
+      ],
+      "rule": "_validate_governance",
+      "evidence": [
+        {
+          "role": "governance",
+          "predicate_type": "https://sentinel.example/demo/governance/v1",
+          "locator": "predicate.checks.buildPassed=false"
+        }
+      ],
+      "tests": [
+        {
+          "scenario": "governance-fail",
+          "exit_name": "POLICY_VIOLATION",
+          "exit_code": 50
+        }
+      ],
+      "related_tests": [],
+      "limitation": "Local M2 demo contract; software key, mock governance and demo provenance; no canonical v2.2 mapping."
+    },
+    {
+      "id": "M2-MUT-10",
+      "title": "Unexpected Predicate Rejected",
+      "milestone": "M2",
+      "coverage": "covered",
+      "canonical_ref": null,
+      "implementation": [
+        "demo-v2.2/sentinel_demo/verify.py"
+      ],
+      "rule": "_verify_and_extract_statement",
+      "evidence": [
+        {
+          "role": "governance",
+          "predicate_type": "https://sentinel.example/demo/governance/v1",
+          "locator": "signed statement predicateType vs expected role type"
+        }
+      ],
+      "tests": [
+        {
+          "scenario": "unknown-predicate",
+          "exit_name": "UNKNOWN_PREDICATE",
+          "exit_code": 60
+        }
+      ],
+      "related_tests": [],
+      "limitation": "Local M2 demo contract; software key, mock governance and demo provenance; no canonical v2.2 mapping."
+    },
+    {
+      "id": "GOV-001",
+      "title": "Production Governance Evaluation",
+      "milestone": "M3",
+      "coverage": "partial",
+      "canonical_ref": null,
+      "implementation": [],
+      "rule": "not-implemented",
+      "evidence": [],
+      "tests": [],
+      "related_tests": [
+        "governance-fail"
+      ],
+      "limitation": "Only the mock predicate and rejection of a false technical check are demonstrated; no production evaluation engine."
+    },
+    {
+      "id": "GOV-010",
+      "title": "Policy Evaluation Engine",
+      "milestone": "M3",
+      "coverage": "open",
+      "canonical_ref": null,
+      "implementation": [],
+      "rule": "not-implemented",
+      "evidence": [],
+      "tests": [],
+      "related_tests": [],
+      "limitation": "Rule language, policy inputs and deterministic decision semantics require review."
+    },
+    {
+      "id": "GOV-011",
+      "title": "Risk Score Calculation",
+      "milestone": "M3",
+      "coverage": "open",
+      "canonical_ref": null,
+      "implementation": [],
+      "rule": "not-implemented",
+      "evidence": [],
+      "tests": [],
+      "related_tests": [],
+      "limitation": "Candidate requirement; no scoring model or use of a score as an approval is accepted."
+    },
+    {
+      "id": "GOV-012",
+      "title": "CAB Approval Validation",
+      "milestone": "M3",
+      "coverage": "open",
+      "canonical_ref": null,
+      "implementation": [],
+      "rule": "not-implemented",
+      "evidence": [],
+      "tests": [],
+      "related_tests": [],
+      "limitation": "Human approval identity, scope, validity and evidence must be specified; no synthetic approval."
+    },
+    {
+      "id": "TR-001",
+      "title": "PKCS#11 Trust Anchor",
+      "milestone": "M4",
+      "coverage": "open",
+      "canonical_ref": null,
+      "implementation": [],
+      "rule": "not-implemented",
+      "evidence": [],
+      "tests": [],
+      "related_tests": [],
+      "limitation": "No HSM-backed signing validation or independently provisioned trust anchor."
+    },
+    {
+      "id": "TR-002",
+      "title": "Azure Key Vault Trust Anchor",
+      "milestone": "M4",
+      "coverage": "open",
+      "canonical_ref": null,
+      "implementation": [],
+      "rule": "not-implemented",
+      "evidence": [],
+      "tests": [],
+      "related_tests": [],
+      "limitation": "No Azure Key Vault signing validation or independently provisioned trust anchor."
+    }
+  ]
+}

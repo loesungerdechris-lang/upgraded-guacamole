@@ -21,3 +21,14 @@
 /SECURITY.md @loesungerdechris-lang
 /README.md @loesungerdechris-lang
 /demo-v2.2/ @loesungerdechris-lang
+
+# M2 baseline and crosswalk contracts
+/docs/evidence-bundle-v2.2/ @loesungerdechris-lang
+/docs/acceptance/ @loesungerdechris-lang
+/docs/mutation-coverage-matrix.md @loesungerdechris-lang
+/docs/mutation-coverage.mmd @loesungerdechris-lang
+/tests/crosswalk/ @loesungerdechris-lang
+/tests/exit-codes.yaml @loesungerdechris-lang
+/scripts/crosswalk.py @loesungerdechris-lang
+/scripts/crosswalk_gate.py @loesungerdechris-lang
+/.github/rulesets/ @loesungerdechris-lang

@@ -23,9 +23,11 @@ from sentinel_demo.cli import atomic_json
 from sentinel_demo.store import DirectoryStore, RegistryStore, descriptor, digest, OCI_MANIFEST
 from sentinel_demo.verify import verify_bundle
 from scenarios import run_scenarios
+from golden_variants import prepare_variants
 
 PROFILE = "sentinel-demo-mvp/v0.1"
-TYPES = {"sbom": "https://cyclonedx.org/bom", "governance": "https://sentinel.example/demo/governance/v1",
+M2_PROFILE = "sentinel-demo-m2/v0.1"
+TYPES = {"provenance": "https://sentinel.example/demo/provenance/v1", "sbom": "https://cyclonedx.org/bom", "governance": "https://sentinel.example/demo/governance/v1",
          "manifest": "https://sentinel.example/demo/evidence-manifest/v1"}
 BUNDLE_TYPE = "application/vnd.dev.sigstore.bundle.v0.3+json"
 
@@ -114,7 +116,9 @@ def attest(pipeline: Pipeline, store: RegistryStore, work: Path, image: str,
     return find_artifact(store, image_digest, bundle)
 
 
-def run(tools: Path, output: Path, scenario: str) -> dict:
+def run(tools: Path, output: Path, scenario: str, profile: str = PROFILE) -> dict:
+    if profile not in {PROFILE, M2_PROFILE}:
+        raise ValueError("Unsupported producer profile")
     if output.exists() and any(output.iterdir()):
         raise RuntimeError("Output directory is not empty; choose a new --output path")
     output.mkdir(parents=True, exist_ok=True)
@@ -186,10 +190,10 @@ def run(tools: Path, output: Path, scenario: str) -> dict:
             pipeline.run([pipeline.tool("syft"), "registry:" + image,
                           "-o", "cyclonedx-json@1.6=" + str(output / "sbom.json")], timeout=120)
             sbom = json.loads((output / "sbom.json").read_bytes())
-            policy = (ROOT / "policy/governance.yml").read_bytes()
+            policy = (ROOT / "policy" / ("governance-m2.yml" if profile == M2_PROFILE else "governance.yml")).read_bytes()
             policy_hash = digest(policy)
             run_id = "demo-" + digest(binary_bytes)[7:23] + "-" + image_digest[7:23]
-            governance = {"profile": PROFILE, "fixture": True, "productionApproval": False,
+            governance = {"profile": profile, "fixture": True, "productionApproval": False,
                           "runId": run_id, "imageDigest": image_digest, "policySha256": policy_hash,
                           "checks": {"buildPassed": True, "testsPassed": True, "sbomGenerated": True}}
             (output / "governance.json").write_bytes(json_bytes(governance))
@@ -198,14 +202,22 @@ def run(tools: Path, output: Path, scenario: str) -> dict:
             shutil.copyfile(work / "demo.pub", key)
             print("Sign and upload SBOM, mock governance and inventory", flush=True)
             entries = []
-            for role, predicate in [("sbom", sbom), ("governance", governance)]:
+            predicates = [("sbom", sbom), ("governance", governance)]
+            if profile == M2_PROFILE:
+                provenance = {"profile": profile, "fixture": True, "runId": run_id,
+                              "imageDigest": image_digest, "policySha256": policy_hash,
+                              "sourceSha256": digest(source.read_bytes()),
+                              "binarySha256": digest(binary_bytes), "builder": "sentinel-demo"}
+                (output / "provenance.json").write_bytes(json_bytes(provenance))
+                predicates.append(("provenance", provenance))
+            for role, predicate in predicates:
                 reference = attest(pipeline, store, work, image, role, predicate)
                 entries.append({"role": role, "predicateType": TYPES[role], **reference})
-            manifest = {"profile": PROFILE, "runId": run_id, "imageDigest": image_digest,
+            manifest = {"profile": profile, "runId": run_id, "imageDigest": image_digest,
                         "policySha256": policy_hash, "entries": entries}
             (output / "evidence-manifest.json").write_bytes(json_bytes(manifest))
             reference = attest(pipeline, store, work, image, "manifest", manifest)
-            request = {"profile": PROFILE, "image": image, "manifest": reference,
+            request = {"profile": profile, "image": image, "manifest": reference,
                        "runId": run_id, "policySha256": policy_hash, "publicKeySha256": digest(key.read_bytes())}
             atomic_json(output / "verification-request.json", request)
             (output / "governance-policy.yml").write_bytes(policy)
@@ -219,10 +231,14 @@ def run(tools: Path, output: Path, scenario: str) -> dict:
             atomic_json(output / "verification-offline.json", offline)
             if offline != repeat or live != offline:
                 raise RuntimeError("Same bytes produced different online/offline verification results")
-            expected = json.loads((ROOT / "expected/acceptance.json").read_bytes())["scenarios"]
-            outcomes = run_scenarios(output / "bundle", request, policy, key, pipeline.tool("cosign"), expected, scenario)
+            if profile == M2_PROFILE:
+                prepare_variants(pipeline, work, export, request, manifest, governance, image_bytes)
+                outcomes = [{"scenario": "golden", "accepted": True, "result": live}]
+            else:
+                expected = json.loads((ROOT / "expected/acceptance.json").read_bytes())["scenarios"]
+                outcomes = run_scenarios(output / "bundle", request, policy, key, pipeline.tool("cosign"), expected, scenario)
             atomic_json(output / "acceptance-results.json", {"scenarios": outcomes})
-            summary = {"profile": PROFILE, "pipelineStatus": "PASS" if all(x["accepted"] for x in outcomes) else "FAIL",
+            summary = {"profile": profile, "pipelineStatus": "PASS" if all(x["accepted"] for x in outcomes) else "FAIL",
                        "productionAcceptance": False, "image": image, "manifest": reference,
                        "sourceSha256": digest(source.read_bytes()), "binarySha256": digest(binary_bytes),
                        "policySha256": policy_hash, "toolchainLockSha256": digest((ROOT / "toolchain.lock.json").read_bytes()),

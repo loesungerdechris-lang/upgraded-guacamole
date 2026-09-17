@@ -1,0 +1,17 @@
+{
+  "profile": "sentinel-demo-m2/v0.1",
+  "exit_codes": {
+    "VERIFIED": 0,
+    "MISSING_MANIFEST": 10,
+    "MISSING_SBOM": 11,
+    "MISSING_PROVENANCE": 13,
+    "MISSING_GOVERNANCE": 12,
+    "MISSING_ATTESTATION": 14,
+    "DIGEST_MISMATCH": 20,
+    "INVALID_SIGNATURE": 30,
+    "SUBJECT_MISMATCH": 40,
+    "POLICY_VIOLATION": 50,
+    "UNKNOWN_PREDICATE": 60
+  },
+  "other_error": 90
+}
