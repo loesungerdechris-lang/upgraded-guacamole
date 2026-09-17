@@ -25,14 +25,27 @@ tests/         Verifier, fixtures, and red-team style tests
 .github/       CI and repository hygiene checks
 ```
 
-## Architecture demonstrator — M1 (draft)
+## Architecture demonstrator — M1/M2 (draft)
 
 [`demo-v2.2/`](demo-v2.2/README.md) contains the isolated Evidence Bundle CI/CD
-demonstrator. It uses one runner locally and in GitHub Actions, a real local OCI
-registry, Syft/Cosign evidence, and a six-case acceptance matrix. It is an
-architecture demonstrator with mocked governance, not a compliance assessment or
-production release authority. The existing core and receipt/release gates remain
-in force. Scope and merge blockers: [M1 maturity](demo-v2.2/docs/MATURITY.md).
+demonstrator. M2 verifies one live OCI/Syft/Cosign golden bundle and ten declarative
+mutations with exact process exit codes. The same runner is used locally and in CI.
+
+| M2 coverage category | Validated requirements |
+|---|---|
+| Evidence presence | ✅ Manifest · SBOM · demo provenance · governance · attestation wrapper — **5/5** |
+| Integrity and binding | ✅ Digest · signature · subject — **3/3** |
+| Demo policy and predicate | ✅ Failed mock control · unexpected predicate type — **2/2** |
+
+**COMPLETE (M2 Scope): 10/10 expected rejections, 32/32 tests.** This is the frozen
+result of [run 35219131191](https://github.com/loesungerdechris-lang/upgraded-guacamole/actions/runs/35219131191)
+for head `d475430`; it is not a claim about every later revision.
+The [contractual coverage matrix](docs/mutation-coverage-matrix.md) links requirements,
+mutations, numeric outcomes and job evidence. [Mermaid source](docs/mutation-coverage.mmd).
+
+Governance remains mocked, provenance is demo-only, and production trust is open.
+Scope and human merge decisions: [maturity](demo-v2.2/docs/MATURITY.md).
+Existing core and receipt/release gates remain in force.
 
 ## Implemented bootstrap checks
 

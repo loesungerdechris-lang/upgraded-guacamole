@@ -1,0 +1,13 @@
+flowchart LR
+  %% Frozen evidence: run 35219131191, head d475430124d7ed8fd8b01402dc518c71ed29a6af
+  %% Labels are observed rejection results, not production readiness.
+  R1["M2-MUT-01: Manifest Required"] --> T1["missing-manifest"] --> E1["Exit 10: validated"]
+  R2["M2-MUT-02: SBOM Required"] --> T2["missing-sbom"] --> E2["Exit 11: validated"]
+  R3["M2-MUT-03: Provenance Required"] --> T3["missing-provenance"] --> E3["Exit 13: validated"]
+  R4["M2-MUT-04: Governance Required"] --> T4["missing-governance"] --> E4["Exit 12: validated"]
+  R5["M2-MUT-05: Attestation Required"] --> T5["missing-attestation"] --> E5["Exit 14: validated"]
+  R6["M2-MUT-06: Digest Integrity"] --> T6["digest-mismatch"] --> E6["Exit 20: validated"]
+  R7["M2-MUT-07: Signature Validation"] --> T7["invalid-signature"] --> E7["Exit 30: validated"]
+  R8["M2-MUT-08: Subject Binding"] --> T8["subject-mismatch"] --> E8["Exit 40: validated"]
+  R9["M2-MUT-09: Governance Enforcement (Mock)"] --> T9["governance-fail"] --> E9["Exit 50: validated"]
+  R10["M2-MUT-10: Predicate Validation"] --> T10["unknown-predicate"] --> E10["Exit 60: validated"]

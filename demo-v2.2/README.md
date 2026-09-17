@@ -8,6 +8,9 @@ belegt. Governance-Akzeptanz und menschliches Review bleiben offen.
 **M2:** Ein live erzeugtes Golden Bundle, zehn deklarative Mutationen und exakte
 Prozess-Exit-Codes. Der [M2-Vertrag mit Startbefehlen](docs/M2_PROFILE.md) beschreibt
 das zusätzliche Profil, die Demo-Provenance und die Vertrauensgrenzen.
+Die [vertragliche Coverage-Matrix](../docs/mutation-coverage-matrix.md) verbindet
+zehn M2-Anforderungen mit Mutationen, exakten Exit-Codes und GitHub-Nachweisen;
+sie enthält auch die Statusübersicht und das Mermaid-Diagramm.
 Die folgenden Build-/Verifier-Details beschreiben weiterhin den kompatiblen M1-Pfad.
 
 Ein kleiner, ausführbarer erster Sprint: **ein Rust-Binary, ein reales SBOM, ein ausdrücklich markierter Governance-Mock, ein signiertes Evidence Manifest und ein lesender Verifier.** Die Pipeline prüft das Bundle direkt aus einer lokalen OCI-Registry und wiederholt die Prüfung am exportierten Paket.

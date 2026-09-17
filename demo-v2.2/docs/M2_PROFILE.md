@@ -38,19 +38,11 @@ filesystem. Each CI job has an isolated work directory.
 The signed inventory and CAS layout are authoritative; deleting a convenience
 copy such as `sbom.json` would not remove the actual signed SBOM. Accordingly:
 
-| Scenario | Mutation | Verifier exit |
-|---|---|---:|
-| Golden | No mutation | 0 |
-| missing-manifest | Remove root OCI artifact manifest | 10 |
-| missing-sbom | Remove referenced SBOM bundle payload | 11 |
-| missing-governance | Remove referenced governance bundle payload | 12 |
-| missing-provenance | Remove referenced demo-provenance bundle payload | 13 |
-| missing-attestation | Remove referenced governance OCI artifact manifest | 14 |
-| digest-mismatch | Change SBOM bundle bytes under the original CAS address | 20 |
-| invalid-signature | Flip a root DSSE signature byte and recompute outer descriptors | 30 |
-| subject-mismatch | Signed governance bound to different image bytes | 40 |
-| governance-fail | Signed governance with `buildPassed:false` | 50 |
-| unknown-predicate | Signed governance-role evidence with unknown predicate URI | 60 |
+The normative scenario/requirement/exit mapping is defined in the
+[Mutation Coverage Matrix](../../docs/mutation-coverage-matrix.md), revision 1.0.
+It includes the golden control (exit 0), ten negative cases, requirement IDs,
+observed results for a pinned commit and links to the executable catalog.
+Changes to this contract require the matrix and catalog to be reviewed together.
 
 M2 other verification/input errors return 90. Before an M2 request can be read,
 legacy CLI input errors return 4; argument syntax errors return 2. Mutation setup
