@@ -47,6 +47,23 @@ Governance remains mocked, provenance is demo-only, and production trust is open
 Scope and human merge decisions: [maturity](demo-v2.2/docs/MATURITY.md).
 Existing core and receipt/release gates remain in force.
 
+The [M2 baseline](docs/acceptance/m2-baseline.md) fixes the later `66732c7` run.
+The [v2.2 crosswalk](docs/evidence-bundle-v2.2/crosswalk.md) now links local
+requirements, signed evidence, verifier rules, mutation exits and CI proof.
+Its schema, source pins and generated views are checked in the same workflow;
+`crosswalk-gate` and `evidence-total-gate` require actual predecessor success.
+
+| Milestone | Technical status |
+|---|---|
+| M1 CI/CD | Demonstrated; PR #69 remains draft |
+| M2 mutation validation | Baseline recorded; PR #70 remains draft |
+| M3 Governance Realization | [Planned](docs/evidence-bundle-v2.2/m3-governance-realization.md); mock remains |
+| M4 production trust anchors | Open |
+| M5 full v2.2 acceptance | Open; canonical specification mapping not established |
+
+[Review and merge enforcement](docs/evidence-bundle-v2.2/review-and-gates.md)
+documents the remaining human-review and server-side configuration work.
+
 ## Implemented bootstrap checks
 
 - JSON Schema validation for evidence records

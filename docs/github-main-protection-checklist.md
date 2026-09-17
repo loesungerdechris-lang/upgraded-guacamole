@@ -30,6 +30,13 @@ SENTINEL Core Security
 
 If additional language-specific workflows remain active, keep them required as well.
 
+For the Evidence Bundle crosswalk, add `crosswalk-gate` and
+`evidence-total-gate` without removing existing checks. The
+[additive ruleset proposal](../.github/rulesets/evidence-review.proposed.json) is
+disabled and has not been applied server-side. Confirm the actual check contexts,
+the GitHub Actions App binding and an independent eligible code owner before
+activation. See [review and gate contract](evidence-bundle-v2.2/review-and-gates.md).
+
 ## Required human review focus
 
 For changes touching verifier, trust, policy, schema, CI or security docs, review must check:

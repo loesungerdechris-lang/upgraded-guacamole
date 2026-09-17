@@ -11,6 +11,9 @@ das zusätzliche Profil, die Demo-Provenance und die Vertrauensgrenzen.
 Die [vertragliche Coverage-Matrix](../docs/mutation-coverage-matrix.md) verbindet
 zehn M2-Anforderungen mit Mutationen, exakten Exit-Codes und GitHub-Nachweisen;
 sie enthält auch die Statusübersicht und das Mermaid-Diagramm.
+Die [M2-Baseline](../docs/acceptance/m2-baseline.md) fixiert den Referenzlauf.
+Der [v2.2-Crosswalk](../docs/evidence-bundle-v2.2/crosswalk.md) ergänzt den
+maschinenlesbaren Vertrag, generierte Ansichten und die Grenzen der Abdeckung.
 Die folgenden Build-/Verifier-Details beschreiben weiterhin den kompatiblen M1-Pfad.
 
 Ein kleiner, ausführbarer erster Sprint: **ein Rust-Binary, ein reales SBOM, ein ausdrücklich markierter Governance-Mock, ein signiertes Evidence Manifest und ein lesender Verifier.** Die Pipeline prüft das Bundle direkt aus einer lokalen OCI-Registry und wiederholt die Prüfung am exportierten Paket.
@@ -103,6 +106,10 @@ Fall den erwarteten Exit-Code. Private Schlüssel gelangen nicht in diese Jobs.
 **SENTINEL demo gate** benötigt beide Jobs mit Ergebnis `success`. Fehler,
 Abbrüche, übersprungene Jobs und unbekannte Werte sperren das technische Gate.
 Das Gate ist keine Produktionsfreigabe. Details: [CI-Integration](docs/CI_INTEGRATION.md).
+Zusätzlich prüft `crosswalk-validation` den Traceability-Vertrag; `crosswalk-gate`
+und `evidence-total-gate` verlangen ausdrücklich erfolgreiche Vorgängerjobs.
+Der [Reviewvertrag](../docs/evidence-bundle-v2.2/review-and-gates.md) erklärt den
+Unterschied zwischen diesen CI-Gates und noch nicht aktiviertem Merge-Schutz.
 
 ## Dateien
 

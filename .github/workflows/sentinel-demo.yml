@@ -12,6 +12,58 @@ permissions:
   contents: read
 
 jobs:
+  crosswalk-validation:
+    name: crosswalk-validation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout crosswalk and implementation
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install isolated schema validator
+        run: |
+          python3 -m venv .crosswalk-venv
+          .crosswalk-venv/bin/python -m pip install --disable-pip-version-check jsonschema==4.26.0
+      - name: Validate contract, source pins and generated views
+        run: .crosswalk-venv/bin/python scripts/crosswalk.py validate --output .crosswalk-results/validation.json
+      - name: Exercise crosswalk rejection and gate regressions
+        run: .crosswalk-venv/bin/python -m unittest discover -s tests/crosswalk -v
+      - name: Retain crosswalk decision
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sentinel-crosswalk-validation
+          path: .crosswalk-results/validation.json
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error
+
+  crosswalk-gate:
+    name: crosswalk-gate
+    needs: crosswalk-validation
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout gate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require crosswalk validation success
+        env:
+          VALIDATION_RESULT: ${{ needs.crosswalk-validation.result }}
+        run: python3 scripts/crosswalk_gate.py --validation "$VALIDATION_RESULT" --output .crosswalk-results/gate.json
+      - name: Retain crosswalk gate
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sentinel-crosswalk-gate
+          path: .crosswalk-results/gate.json
+          include-hidden-files: true
+          retention-days: 7
+          if-no-files-found: error
+
   verify-golden:
     defaults:
       run:
@@ -130,5 +182,33 @@ jobs:
         with:
           name: sentinel-demo-gate
           path: demo-v2.2/ci-gate/result.json
+          retention-days: 7
+          if-no-files-found: error
+
+  evidence-total-gate:
+    name: evidence-total-gate
+    needs: [demo-gate, crosswalk-gate]
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout total gate
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Require evidence and crosswalk success
+        env:
+          CROSSWALK_RESULT: ${{ needs.crosswalk-gate.result }}
+          EVIDENCE_RESULT: ${{ needs.demo-gate.result }}
+        run: |
+          python3 scripts/crosswalk_gate.py --validation "$CROSSWALK_RESULT" \
+            --evidence "$EVIDENCE_RESULT" --output .crosswalk-results/total.json
+      - name: Retain total gate
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sentinel-evidence-total-gate
+          path: .crosswalk-results/total.json
+          include-hidden-files: true
           retention-days: 7
           if-no-files-found: error
