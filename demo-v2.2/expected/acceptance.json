@@ -1,0 +1,11 @@
+{
+  "profile": "sentinel-demo-mvp/v0.1",
+  "scenarios": {
+    "happy-path": {"status": "PASS", "exitCode": 0},
+    "missing-sbom": {"status": "HOLD", "exitCode": 2},
+    "missing-governance": {"status": "HOLD", "exitCode": 2},
+    "digest-mismatch": {"status": "BLOCKED", "exitCode": 3},
+    "bad-signature": {"status": "BLOCKED", "exitCode": 3},
+    "missing-manifest": {"status": "HOLD", "exitCode": 2}
+  }
+}
