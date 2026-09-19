@@ -149,3 +149,36 @@ def test_compares_full_source_coverage_and_bytes(bundle: Path, tmp_path: Path) -
     (source / "README.md").write_text("tampered source", encoding="utf-8")
     with pytest.raises(ValueError, match="source bytes or coverage"):
         verify_candidate_bundle(bundle, **context, repo_root=source)
+
+
+@pytest.mark.parametrize("change", ["working_tree", "staged_bytes", "staged_removal"])
+def test_rejects_dirty_source_even_when_bundle_matches(
+    bundle: Path, tmp_path: Path, change: str
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    subprocess.run(["git", "init", "-q", str(source)], check=True)
+    (source / "README.md").write_text("committed source", encoding="utf-8")
+    (source / "second.txt").write_text("keep full commit coverage", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=source, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+         "commit", "-qm", "synthetic source"],
+        cwd=source, check=True,
+    )
+    commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=source, text=True).strip()
+    if change == "staged_removal":
+        subprocess.run(["git", "rm", "--cached", "second.txt"], cwd=source, check=True)
+    else:
+        (source / "README.md").write_text("uncommitted source", encoding="utf-8")
+        if change == "staged_bytes":
+            subprocess.run(["git", "add", "README.md"], cwd=source, check=True)
+
+    # Recompute all affected evidence hashes: internal consistency alone must not
+    # let working-tree or index changes masquerade as the unchanged HEAD commit.
+    write_tracked_file_manifest(source, bundle / "tracked-files.sha256.json")
+    _manifest(bundle, commit_sha=commit)
+    with pytest.raises(ValueError):
+        verify_candidate_bundle(
+            bundle, **{**_CONTEXT, "expected_sha": commit}, repo_root=source
+        )

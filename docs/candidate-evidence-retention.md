@@ -52,13 +52,19 @@ PYTHONPATH=src python -m sentinel_core.candidate_bundle \
 
 Use `--repo-root /path/to/clean-source-checkout` to also compare the complete
 tracked-file set and every source-file hash against the expected Git commit.
+The verifier rejects changes to the index or tracked working-tree files before
+comparing source hashes, even if the bundle was updated to match those changes.
+Untracked files are outside this source comparison.
 For pull-request runs, GitHub may use a synthetic merge commit; use the
 `GITHUB_SHA` recorded by that run, not merely the pull-request branch head.
 
 The check rejects missing/extra files, symlinks, duplicate JSON members,
-changed binary or manifest bytes, wrong commit/repository/run/attempt,
+binary or subordinate-manifest hash mismatches, wrong commit/repository/run/attempt,
 non-relative checksum filenames, unsafe tracked paths and any elevation of
 the candidate's release authority. It does not execute the candidate.
+The inner verifier does not validate `ref` or `created_utc`. The separate check
+against the trusted artifact ZIP digest detects changes to any archived bytes,
+including these fields; do not omit that check.
 
 Success is `CANDIDATE_BUNDLE_CONSISTENT`. This proves the checked bindings and
 hash consistency, not a cryptographic signature, trusted origin by itself,

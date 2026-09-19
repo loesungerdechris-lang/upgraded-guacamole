@@ -122,6 +122,10 @@ def verify_candidate_bundle(
         ).strip()
         if actual_sha != expected_sha:
             raise ValueError("source checkout does not match expected commit")
+        if subprocess.check_output(
+            ["git", "status", "--porcelain", "--untracked-files=no"], cwd=repo_root
+        ):
+            raise ValueError("tracked source bytes or coverage differ from expected commit")
         actual_records = build_tracked_file_records(
             repo_root, tracked_paths_from_git(repo_root)
         )
