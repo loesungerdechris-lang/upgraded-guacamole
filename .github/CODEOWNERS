@@ -12,6 +12,9 @@
 /src/sentinel_core/receipt.py @loesungerdechris-lang
 /src/sentinel_core/schema.py @loesungerdechris-lang
 /src/sentinel_core/trust.py @loesungerdechris-lang
+/src/sentinel_core/candidate_bundle.py @loesungerdechris-lang
+/tests/test_candidate_bundle.py @loesungerdechris-lang
+/docs/candidate-evidence-retention.md @loesungerdechris-lang
 /tests/test_receipt_verifier.py @loesungerdechris-lang
 /docs/receipt-verifier-production-gate.md @loesungerdechris-lang
 /docs/github-main-protection-checklist.md @loesungerdechris-lang
