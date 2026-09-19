@@ -142,8 +142,7 @@ jobs:
             --repo-root . \
             --output "$evidence_dir/tracked-files.sha256.json"
 
-          sha256sum -- "$evidence_dir/sentinel" \
-            > "$evidence_dir/sentinel.sha256"
+          (cd "$evidence_dir" && sha256sum -- sentinel > sentinel.sha256)
 
           python - <<'PY'
           import hashlib
@@ -195,7 +194,58 @@ jobs:
             exit 1
           fi
 
-      - name: Final fail-closed result
+      - name: Verify candidate bundle against source and run
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m sentinel_core.candidate_bundle \
+            --bundle "$RUNNER_TEMP/sentinel-release" \
+            --expected-sha "$GITHUB_SHA" \
+            --expected-repository "$GITHUB_REPOSITORY" \
+            --expected-run-id "$GITHUB_RUN_ID" \
+            --expected-run-attempt "$GITHUB_RUN_ATTEMPT" \
+            --repo-root .
+
+      - name: Package verified candidate evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -C "$RUNNER_TEMP/sentinel-release" \
+            -cf "$RUNNER_TEMP/sentinel-candidate.tar" \
+            sentinel sentinel.sha256 tracked-files.sha256.json release-evidence.json
+
+      - name: Retain verified candidate evidence
+        id: candidate-artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sentinel-candidate-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/sentinel-candidate.tar
+          if-no-files-found: error
+          retention-days: 90
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Record candidate artifact receipt
+        shell: bash
+        env:
+          ARTIFACT_ID: ${{ steps.candidate-artifact.outputs.artifact-id }}
+          ARTIFACT_URL: ${{ steps.candidate-artifact.outputs.artifact-url }}
+          ARTIFACT_DIGEST: ${{ steps.candidate-artifact.outputs.artifact-digest }}
+        run: |
+          set -euo pipefail
+          test -n "$ARTIFACT_ID"
+          test -n "$ARTIFACT_URL"
+          [[ "$ARTIFACT_DIGEST" =~ ^[0-9a-f]{64}$ ]]
+          {
+            echo '## Candidate evidence artifact'
+            printf 'Artifact ID: %s\n\n' "$ARTIFACT_ID"
+            printf 'Artifact URL: %s\n\n' "$ARTIFACT_URL"
+            printf 'Artifact ZIP SHA-256: %s\n\n' "$ARTIFACT_DIGEST"
+            echo 'GitHub retention: 90 days. Export reviewed evidence to the durable archive before expiry.'
+            echo 'Validation only; no signature or release authority is conferred.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Final candidate result
         shell: bash
         run: |
           set -euo pipefail
