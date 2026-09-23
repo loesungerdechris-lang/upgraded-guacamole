@@ -1,0 +1,20 @@
+# ThürUIG Seed (konsolidiert, nicht amtlich)
+
+Quelle: https://landesrecht.thueringen.de/bsth/document/jlr-UIGTHrahmen
+Hinweis: Texte dienen dem Pipeline-Ingest. Maßgeblich ist die Fassung im GVBl.
+
+§ 3 Anspruch auf Zugang zu Umweltinformationen
+(1) Jede Person hat nach Maßgabe dieses Gesetzes Anspruch auf Zugang zu Umweltinformationen, über die eine informationspflichtige Stelle im Sinne des § 2 Abs. 1 verfügt, ohne ein rechtliches Interesse darlegen zu müssen. Daneben bleiben andere Ansprüche auf Zugang zu Informationen unberührt.
+(2) Der Zugang kann durch Auskunftserteilung, Gewährung von Akteneinsicht oder in sonstiger Weise eröffnet werden. Wird eine bestimmte Art des Informationszugangs beantragt, so entspricht die Behörde diesem Antrag, es sei denn, es ist für die Behörde angemessen, die Informationen in einer anderen Form oder einem anderen Format zugänglich zu machen; die Wahl der Behörde ist zu begründen. Soweit Umweltinformationen der antragstellenden Person bereits auf andere leicht zugängliche Art, insbesondere durch Verbreitung nach § 10, zur Verfügung stehen, soll die informationspflichtige Stelle die Person auf diese Art des Informationszugangs verweisen.
+(3) Soweit ein Anspruch nach Absatz 1 besteht, sind die Umweltinformationen der antragstellenden Person unter Berücksichtigung etwaiger von ihr angegebener Zeitpunkte so bald wie möglich, spätestens jedoch mit Ablauf der Frist nach Satz 2 Nr. 1 oder 2 zugänglich zu machen. Die Frist beginnt mit Eingang des Antrags bei der informationspflichtigen Stelle, die über die Informationen verfügt und endet 1. mit Ablauf eines Monats oder, 2. soweit Umweltinformationen derart umfangreich und/oder komplex sind, dass die in Nummer 1 genannte Frist nicht eingehalten werden kann, mit Ablauf von zwei Monaten.
+
+§ 4 Antrag und Verfahren
+(1) Umweltinformationen werden von einer informationspflichtigen Stelle auf Antrag zugänglich gemacht.
+(2) Der Antrag muss erkennen lassen, zu welchen Umweltinformationen der Zugang gewünscht wird. Ist der Antrag zu unbestimmt, ist der antragstellenden Person dies innerhalb eines Monats mitzuteilen und ihr Gelegenheit zur Präzisierung des Antrags zu geben. Kommt die antragstellende Person der Aufforderung zur Präzisierung nach, beginnt der Lauf der Frist zur Beantwortung von Anträgen erneut. Die Informationssuchenden sind bei der Stellung und Präzisierung von Anträgen zu unterstützen.
+(3) Wird der Antrag bei einer informationspflichtigen Stelle gestellt, die nicht über die Umweltinformationen verfügt, leitet sie den Antrag möglichst rasch an die über die begehrten Informationen verfügende Stelle weiter, wenn ihr diese bekannt ist, und unterrichtet die antragstellende Person hierüber. Anstelle der Weiterleitung des Antrags kann sie die antragstellende Person auch auf andere ihr bekannte informationspflichtige Stellen hinweisen, die über die Informationen verfügen.
+
+§ 5 Ablehnung des Antrags
+(1) Wird der Antrag ganz oder teilweise nach den §§ 8 und 9 abgelehnt, ist die antragstellende Person innerhalb der Fristen nach § 3 Abs. 3 Satz 2 hierüber zu unterrichten. Ihr sind die Gründe für die Ablehnung mitzuteilen. In den Fällen des § 8 Abs. 2 Nr. 4 ist darüber hinaus die Stelle, die das Material vorbereitet, sowie der voraussichtliche Zeitpunkt der Fertigstellung mitzuteilen. § 1 Abs. 1 Satz 1 des Thüringer Verwaltungsverfahrensgesetzes in Verbindung mit § 39 Abs. 2 des Verwaltungsverfahrensgesetzes findet keine Anwendung.
+(2) Wenn der Antrag schriftlich gestellt wurde oder die antragstellende Person dies begehrt, erfolgt die Ablehnung in schriftlicher Form. Sie ist auf Verlangen der antragstellenden Person elektronisch mitzuteilen, wenn der Zugang hierfür eröffnet ist.
+(3) Liegt ein Ablehnungsgrund nach den §§ 8 und 9 vor, sind die hiervon nicht betroffenen Informationen zugänglich zu machen, soweit es möglich ist, sie auszusondern.
+(4) Die antragstellende Person ist im Fall der vollständigen oder teilweisen Ablehnung eines Antrags über die Rechtsschutzmöglichkeiten gegen die Entscheidung sowie darüber zu belehren, bei welcher Stelle und innerhalb welcher Frist um Rechtsschutz nachgesucht werden kann.

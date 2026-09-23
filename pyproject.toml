@@ -25,6 +25,12 @@ dev = [
 voice = [
   "websockets>=15.0,<17.0"
 ]
+rag = [
+  "sentence-transformers>=3.0.0,<6.0.0"
+]
+colbert = [
+  "FlagEmbedding>=1.2.0,<2.0.0"
+]
 
 [project.scripts]
 sentinel-xai-voice = "sentinel_core.xai_voice:main"
