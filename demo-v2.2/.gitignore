@@ -1,0 +1,8 @@
+.tools/
+.run/
+__pycache__/
+*.pyc
+*.key
+release/
+release-*/
+ci-gate/
