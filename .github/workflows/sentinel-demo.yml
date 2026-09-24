@@ -36,7 +36,7 @@ jobs:
           name: sentinel-crosswalk-validation
           path: .crosswalk-results/validation.json
           include-hidden-files: true
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: error
 
   crosswalk-gate:
@@ -61,7 +61,7 @@ jobs:
           name: sentinel-crosswalk-gate
           path: .crosswalk-results/gate.json
           include-hidden-files: true
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: error
 
   verify-golden:
@@ -102,7 +102,7 @@ jobs:
         with:
           name: sentinel-m2-golden
           path: demo-v2.2/release-golden/
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: error
       - name: Retain independently exported golden pin
         if: always()
@@ -110,7 +110,7 @@ jobs:
         with:
           name: sentinel-m2-pin
           path: demo-v2.2/release-pin.json
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: warn
 
   mutation-suite:
@@ -152,7 +152,7 @@ jobs:
           path: |
             demo-v2.2/release-mutations/*.json
             demo-v2.2/release-mutations/*.log
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: error
 
   demo-gate:
@@ -182,7 +182,7 @@ jobs:
         with:
           name: sentinel-demo-gate
           path: demo-v2.2/ci-gate/result.json
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: error
 
   evidence-total-gate:
@@ -210,5 +210,5 @@ jobs:
           name: sentinel-evidence-total-gate
           path: .crosswalk-results/total.json
           include-hidden-files: true
-          retention-days: 7
+          retention-days: 90
           if-no-files-found: error
