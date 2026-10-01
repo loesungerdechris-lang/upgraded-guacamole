@@ -1,0 +1,340 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:sentinel:schema:wayback:evidence:v1",
+  "title": "SENTINEL Wayback Evidence v1",
+  "description": "Fail-closed, evidence-first manifest for Internet Archive reconstructions. HOLD is the default state.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "status",
+    "source",
+    "target_url",
+    "snapshot",
+    "observed_at",
+    "artifacts",
+    "interpretation_limits",
+    "release_gate",
+    "manifest_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "sentinel.wayback.evidence.v1"
+    },
+    "status": {
+      "enum": ["HOLD", "VERIFIED", "PUBLISHED"]
+    },
+    "source": {
+      "type": "object",
+      "required": ["id", "provider", "official_hosts"],
+      "properties": {
+        "id": {
+          "const": "internet-archive-wayback"
+        },
+        "provider": {
+          "const": "Internet Archive"
+        },
+        "official_hosts": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "archive.org" },
+            { "const": "web.archive.org" },
+            { "const": "www.archive.org" }
+          ],
+          "minItems": 3,
+          "maxItems": 3
+        }
+      },
+      "additionalProperties": false
+    },
+    "target_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "snapshot": {
+      "type": "object",
+      "required": [
+        "timestamp",
+        "original_url",
+        "status_code",
+        "replay_url",
+        "mime_type",
+        "archive_digest",
+        "length"
+      ],
+      "properties": {
+        "timestamp": {
+          "type": "string",
+          "pattern": "^[0-9]{14}$",
+          "description": "Wayback capture timestamp; never automatically a publication or existence date."
+        },
+        "original_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "status_code": {
+          "type": "integer",
+          "minimum": 100,
+          "maximum": 599
+        },
+        "replay_url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "mime_type": {
+          "type": ["string", "null"]
+        },
+        "archive_digest": {
+          "type": ["string", "null"]
+        },
+        "length": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "original_url",
+          "archive_url",
+          "snapshot_timestamp",
+          "retrieved_at",
+          "content_type",
+          "byte_length",
+          "sha256",
+          "relative_path"
+        ],
+        "properties": {
+          "original_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "archive_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "snapshot_timestamp": {
+            "type": "string",
+            "pattern": "^[0-9]{14}$"
+          },
+          "retrieved_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "content_type": {
+            "type": ["string", "null"]
+          },
+          "byte_length": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "relative_path": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "interpretation_limits": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "release_gate": {
+      "type": "object",
+      "required": [
+        "mode",
+        "rights_review_status",
+        "privacy_review_status",
+        "provenance_review_status",
+        "sentinel_release_status",
+        "publish_restored_content"
+      ],
+      "properties": {
+        "mode": {
+          "enum": ["offline_preview_only", "offline_reviewed", "released"]
+        },
+        "rights_review_status": {
+          "enum": ["required", "approved", "rejected"]
+        },
+        "privacy_review_status": {
+          "enum": ["required", "approved", "rejected"]
+        },
+        "provenance_review_status": {
+          "enum": ["required", "approved", "rejected"]
+        },
+        "sentinel_release_status": {
+          "enum": ["HOLD", "APPROVED"]
+        },
+        "publish_restored_content": {
+          "type": "boolean"
+        },
+        "release_receipt_sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "cross_verification_sources": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": [
+          "source_id",
+          "source_class",
+          "source_origin",
+          "original_url",
+          "archive_url",
+          "retrieval_timestamp",
+          "sha256",
+          "acquisition_authority",
+          "provenance_notes",
+          "limitations"
+        ],
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_class": {
+            "enum": [
+              "external_archive",
+              "memento_aggregator",
+              "local_capture"
+            ]
+          },
+          "source_origin": {
+            "type": "string",
+            "minLength": 1
+          },
+          "original_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "archive_url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "archive_timestamp": {
+            "type": ["string", "null"],
+            "description": "Source-specific timestamp whose semantics must be documented separately."
+          },
+          "retrieval_timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "acquisition_authority": {
+            "const": "separate_policy_required"
+          },
+          "provenance_notes": {
+            "type": "string",
+            "minLength": 1
+          },
+          "limitations": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "manifest_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "HOLD" }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "release_gate": {
+            "properties": {
+              "mode": { "const": "offline_preview_only" },
+              "sentinel_release_status": { "const": "HOLD" },
+              "publish_restored_content": { "const": false }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "VERIFIED" }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "release_gate": {
+            "properties": {
+              "mode": { "const": "offline_reviewed" },
+              "rights_review_status": { "const": "approved" },
+              "privacy_review_status": { "const": "approved" },
+              "provenance_review_status": { "const": "approved" },
+              "sentinel_release_status": { "const": "HOLD" },
+              "publish_restored_content": { "const": false }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": { "const": "PUBLISHED" }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "release_gate": {
+            "required": ["release_receipt_sha256"],
+            "properties": {
+              "mode": { "const": "released" },
+              "rights_review_status": { "const": "approved" },
+              "privacy_review_status": { "const": "approved" },
+              "provenance_review_status": { "const": "approved" },
+              "sentinel_release_status": { "const": "APPROVED" },
+              "publish_restored_content": { "const": true }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

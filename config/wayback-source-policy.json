@@ -1,0 +1,31 @@
+{
+  "schema_version": "sentinel.archive-source-policy.v1",
+  "source": {
+    "id": "internet-archive-wayback",
+    "provider": "Internet Archive",
+    "status": "active",
+    "official_hosts": [
+      "archive.org",
+      "www.archive.org",
+      "web.archive.org"
+    ],
+    "availability_api": "https://archive.org/wayback/available",
+    "cdx_api": "https://web.archive.org/cdx/search/cdx",
+    "replay_origin": "https://web.archive.org"
+  },
+  "allowed_operations": [
+    "snapshot_discovery",
+    "historical_comparison",
+    "read_only_capture_retrieval",
+    "local_hashing",
+    "offline_restore_preparation"
+  ],
+  "gates": {
+    "automatic_save_page_now": false,
+    "third_party_rebuilder_services": false,
+    "execute_archived_javascript": false,
+    "publish_restored_content": false,
+    "rights_review_required_before_publication": true,
+    "human_review_required_for_evidentiary_claims": true
+  }
+}
