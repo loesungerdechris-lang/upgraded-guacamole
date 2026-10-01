@@ -1,0 +1,110 @@
+name: SENTINEL GitHub Organization Migration
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "scripts/github-org-migration/**"
+      - ".github/workflows/sentinel-github-org-migration.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate-migration-toolkit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Parse PowerShell without execution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $paths = Get-ChildItem scripts/github-org-migration -File | Where-Object { $_.Extension -in '.ps1', '.psm1' }
+          $failures = @()
+          foreach ($path in $paths) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($path.FullName, [ref]$tokens, [ref]$errors)
+            foreach ($error in @($errors)) {
+              $failures += "$($path.FullName):$($error.Extent.StartLineNumber): $($error.Message)"
+            }
+          }
+          if ($failures.Count -gt 0) {
+            throw ($failures -join "`n")
+          }
+          Write-Host "Parsed $($paths.Count) PowerShell files successfully."
+
+      - name: Validate HOLD configuration offline
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module ./scripts/github-org-migration/Migration.Common.psm1 -Force
+          $config = Read-SentinelMigrationConfig ./scripts/github-org-migration/migration-config.example.json
+          if ($config.status -ne 'HOLD') { throw 'Example configuration escaped HOLD.' }
+          if ($config.allow_bulk_transfer -or $config.allow_paid_plan_changes -or $config.allow_azure_mutation) {
+            throw 'Example configuration contains an unsafe authorization flag.'
+          }
+
+      - name: Enforce static safety boundaries
+        shell: python
+        run: |
+          from __future__ import annotations
+
+          import json
+          import re
+          from pathlib import Path
+
+          root = Path("scripts/github-org-migration")
+          scripts = {path.name: path.read_text(encoding="utf-8") for path in root.glob("*.ps1")}
+          module = (root / "Migration.Common.psm1").read_text(encoding="utf-8")
+          config = json.loads((root / "migration-config.example.json").read_text(encoding="utf-8"))
+          failures: list[str] = []
+
+          all_text = "\n".join([module, *scripts.values()])
+          forbidden = {
+              "interactive prompt": r"\bRead-Host\b",
+              "repository deletion": r"\bgh\s+repo\s+delete\b",
+              "pull request merge": r"\bgh\s+pr\s+merge\b",
+              "git pruning": r"\bgit\s+(?:gc|prune)\b",
+              "Azure mutation": r"\baz\s+(?:ad|identity|keyvault|group)\b",
+              "secret retrieval": r"actions/secrets/[^?\s]+",
+          }
+          for label, pattern in forbidden.items():
+              if re.search(pattern, all_text, flags=re.IGNORECASE):
+                  failures.append(f"forbidden {label} pattern found")
+
+          transfer_occurrences = []
+          for name, text in scripts.items():
+              if re.search(r"repos/\$sourceOwner/\$RepositoryName/transfer", text):
+                  transfer_occurrences.append(name)
+          if transfer_occurrences != ["04-migrate-repo.ps1"]:
+              failures.append(f"transfer endpoint must occur only in 04-migrate-repo.ps1: {transfer_occurrences}")
+
+          required_transfer_guards = [
+              "SENTINEL_GITHUB_TRANSFER_AUTHORIZED",
+              "APPROVED_FOR_SINGLE_TRANSFER",
+              "At least two distinct named approvers",
+              "allow_bulk_transfer",
+              "exact_head_sha",
+              "bundle_sha256",
+          ]
+          transfer_script = scripts.get("04-migrate-repo.ps1", "")
+          for guard in required_transfer_guards:
+              if guard not in transfer_script:
+                  failures.append(f"missing transfer guard: {guard}")
+
+          if config.get("status") != "HOLD":
+              failures.append("configuration status must be HOLD")
+          for flag in ("allow_bulk_transfer", "allow_paid_plan_changes", "allow_azure_mutation"):
+              if config.get(flag) is not False:
+                  failures.append(f"configuration flag {flag} must be false")
+          if "azure-sdk-for-net" not in config.get("denied_repositories", []):
+              failures.append("legacy azure-sdk-for-net must remain denied")
+
+          if failures:
+              raise SystemExit("\n".join(failures))
+          print("migration toolkit static safety boundaries validated")

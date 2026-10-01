@@ -1,0 +1,24 @@
+{
+  "schema_version": "sentinel.github-repository-transfer-approval.v1",
+  "status": "APPROVED_FOR_SINGLE_TRANSFER",
+  "source_full_name": "loesungerdechris-lang/sentinel-docs",
+  "target_organization": "akira-security-technologies",
+  "repository_id": "REPLACE_WITH_NUMERIC_REPOSITORY_ID",
+  "exact_head_sha": "REPLACE_WITH_40_CHARACTER_COMMIT_SHA",
+  "inventory_path": "REPLACE_WITH_ABSOLUTE_OR_REVIEWED_RELATIVE_PATH/repository-inventory.json",
+  "inventory_sha256": "sha256:REPLACE_WITH_64_HEX_DIGEST",
+  "bundle_path": "REPLACE_WITH_ABSOLUTE_OR_REVIEWED_RELATIVE_PATH/sentinel-docs.bundle",
+  "bundle_sha256": "sha256:REPLACE_WITH_64_HEX_DIGEST",
+  "coordination_issue_url": "https://github.com/loesungerdechris-lang/sentinel-docs/issues/4",
+  "approvers": [
+    "REPLACE_WITH_FIRST_VERIFIED_GITHUB_LOGIN",
+    "REPLACE_WITH_SECOND_INDEPENDENT_GITHUB_LOGIN"
+  ],
+  "authority_consolidation_complete": false,
+  "approved_at": "2026-07-13T00:00:00Z",
+  "limitations": [
+    "approval applies to one repository and one exact head only",
+    "approval does not authorize production, signing, publication, or Azure mutation",
+    "any source-head movement invalidates this approval"
+  ]
+}
