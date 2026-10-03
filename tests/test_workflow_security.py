@@ -141,3 +141,25 @@ def test_ignores_uses_text_inside_yaml_comment() -> None:
         )
     )
     assert validate_workflow_text(text) == []
+
+
+@pytest.mark.parametrize("updated_component", ["init", "autobuild", "analyze"])
+def test_rejects_partial_codeql_updates(updated_component: str) -> None:
+    old_sha = "ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd"
+    new_sha = "2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2"
+    steps = "\n".join(
+        f"          - uses: github/codeql-action/{component}@"
+        f"{new_sha if component == updated_component else old_sha}"
+        for component in ("init", "autobuild", "analyze")
+    )
+    failures = validate_workflow_text(_workflow(steps))
+    assert any("CodeQL actions must use the same commit" in error for error in failures)
+
+
+def test_accepts_synchronized_codeql_updates() -> None:
+    sha = "2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2"
+    steps = "\n".join(
+        f"          - uses: github/codeql-action/{component}@{sha}"
+        for component in ("init", "autobuild", "analyze")
+    )
+    assert validate_workflow_text(_workflow(steps)) == []
