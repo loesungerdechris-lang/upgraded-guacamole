@@ -22,6 +22,7 @@ _PERSIST_KEY_RE = re.compile(
     r"(?:^|[\s{,])(?:['\"]persist-credentials['\"]|persist-credentials)\s*:"
 )
 _CHECKOUT_RE = re.compile(r"^actions/checkout@[0-9a-fA-F]{40}$")
+_CODEQL_ACTION_RE = re.compile(r"^github/codeql-action/[^@\s]+@([0-9a-fA-F]{40})$")
 
 
 def _without_yaml_comment(line: str) -> str:
@@ -191,6 +192,7 @@ def validate_workflow_text(text: str, *, source: str = "<memory>") -> list[str]:
     lines = text.splitlines()
     failures: list[str] = []
     allowed_uses: list[int] = []
+    codeql_commits: dict[str, list[int]] = {}
 
     for index, raw_line in enumerate(lines, start=1):
         code = _without_yaml_comment(raw_line)
@@ -206,6 +208,9 @@ def validate_workflow_text(text: str, *, source: str = "<memory>") -> list[str]:
         elif uses_match is not None:
             value = uses_match.group("value")
             allowed_uses.append(index - 1)
+            codeql_match = _CODEQL_ACTION_RE.fullmatch(value)
+            if codeql_match is not None:
+                codeql_commits.setdefault(codeql_match.group(1).lower(), []).append(index)
             if value.startswith("./"):
                 if _LOCAL_ACTION_RE.fullmatch(value) is None:
                     failures.append(f"{source}:{index}: invalid local action path: {value}")
@@ -220,6 +225,12 @@ def validate_workflow_text(text: str, *, source: str = "<memory>") -> list[str]:
             failures.append(
                 f"{source}:{index}: unsupported or ambiguous persist-credentials syntax"
             )
+
+    if len(codeql_commits) > 1:
+        locations = ", ".join(
+            str(line) for line in sorted(line for lines in codeql_commits.values() for line in lines)
+        )
+        failures.append(f"{source}:{locations}: CodeQL actions must use the same commit")
 
     checked_steps: set[tuple[int, int]] = set()
     for uses_index in allowed_uses:
