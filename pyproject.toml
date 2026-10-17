@@ -23,7 +23,7 @@ dev = [
   "ruff==0.15.21"
 ]
 voice = [
-  "websockets>=15.0,<17.0"
+  "websockets>=17.0.1,<18.0"
 ]
 
 [project.scripts]
