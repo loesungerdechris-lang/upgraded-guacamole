@@ -49,6 +49,7 @@ _CREDENTIALS = (
 )
 _PROTECTED_FILES = frozenset({
     ".github/CODEOWNERS", "pyproject.toml", "requirements/integrity-guard.txt",
+    "sentinel_lockdown.json",
     "tests/__init__.py", "src/__init__.py",
 })
 # Pytest loads conftest.py at any directory depth. Python startup hooks and
@@ -58,7 +59,7 @@ _PROTECTED_BASENAMES = frozenset({
     "conftest.py", "pytest.ini", ".pytest.ini", "pytest.toml", ".pytest.toml",
     "setup.cfg", "setup.py", "tox.ini", "sitecustomize.py", "usercustomize.py",
 })
-_PROTECTED_PREFIXES = ("src/integrity_guard/", ".github/workflows/")
+_PROTECTED_PREFIXES = ("src/integrity_guard/", ".github/workflows/", "tests/")
 _WRITE_ALL = re.compile(r"^\s*['\"]?permissions['\"]?\s*:\s*['\"]?write-all(?:['\"]?\s*(?:$|[#},]))")
 _USES = re.compile(r"^\s*(?:-\s*)?['\"]?uses['\"]?\s*:\s*(['\"]?)([^\s'\"#]+)\1\s*(?:#.*)?$")
 _UNSAFE_PR_EXPRESSION = re.compile(
@@ -83,6 +84,23 @@ class _Change:
     old_oid: str
     new_oid: str
     status: str
+
+
+def _protected_path(path: str) -> bool:
+    """Test code and fixtures are part of the trust boundary, not self-approval data.
+
+    Protect test additions as well as edits/removals: collecting a newly added
+    test module can execute code before any assertions run. This deliberately
+    requires independent review for test-suite maintenance.
+    """
+    name = path.rsplit("/", 1)[-1]
+    return (
+        path in _PROTECTED_FILES
+        or path.startswith(_PROTECTED_PREFIXES)
+        or name in _PROTECTED_BASENAMES
+        or (name.startswith("test_") and name.endswith(".py"))
+        or name.endswith(("_test.py", "_test.go"))
+    )
 
 
 def _kill(process: subprocess.Popen[bytes]) -> None:
@@ -354,11 +372,7 @@ def scan_repository(repo_path: Path, base_sha: str, head_sha: str, repository: s
         changes = _changes(raw)
         checks["diff"].update(status="PASS", complete=True)
         for change in changes:
-            if (
-                change.path in _PROTECTED_FILES or change.path.startswith(_PROTECTED_PREFIXES)
-                or change.path.rsplit("/", 1)[-1] in _PROTECTED_BASENAMES
-                or (change.path.startswith("tests/test_integrity_") and change.path.endswith(".py"))
-            ):
+            if _protected_path(change.path):
                 removed = change.status == "D"
                 _add(findings, _finding(
                     "INT-010" if removed else "INT-011", change.path,

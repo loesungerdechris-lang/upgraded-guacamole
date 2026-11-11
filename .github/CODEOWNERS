@@ -14,6 +14,8 @@
 /src/sentinel_core/trust.py @loesungerdechris-lang
 /src/integrity_guard/ @loesungerdechris-lang
 /tests/test_integrity_*.py @loesungerdechris-lang
+/tests/ @loesungerdechris-lang
+/sentinel_lockdown.json @loesungerdechris-lang
 /requirements/integrity-guard.txt @loesungerdechris-lang
 /docs/pre-merge-integrity-guard.md @loesungerdechris-lang
 /tests/test_receipt_verifier.py @loesungerdechris-lang

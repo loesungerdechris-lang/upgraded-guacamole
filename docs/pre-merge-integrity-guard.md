@@ -41,6 +41,13 @@ to be rejected by the guard. This prevents that concrete bypass. The CI aggregat
 confirms observed job outcomes; it is not an independent proof of test coverage
 or a guarantee against arbitrary behavior of all executed PR code.
 
+The complete `tests/` tree, including fixtures, and conventional Python/Go test
+files outside it are also protected. A second real regression demonstrates
+deleting a failing security test while leaving another passing test: pytest
+returns 0, but the guard must return 40. New test files are protected too,
+because importing or collecting them can execute code. Test maintenance therefore
+uses the same reviewed maintenance route as other protected controls.
+
 Credential detection intentionally covers a small explicit set of recognizable
 token and private-key patterns. It is not comprehensive secret detection and
 does not replace the existing Gitleaks workflow. It does not decode arbitrary
@@ -186,6 +193,11 @@ audited administrator procedure or a separately designed, independent upgrade
 authorizer. This implementation deliberately has no PR-controlled exception
 list. Do not enable this strict policy without accepting this maintenance cost.
 
+The proposed ruleset payload `sentinel_lockdown.json` is protected as well.
+See [lockdown operations](integrity-lockdown-operations.md) for the deployment
+preflight, existing-check preservation, exact API update target and current
+bootstrap blockers. A prepared payload is not an activation receipt.
+
 ## Required-check rollout
 
 At inspection, ruleset `27074079` (`Pre-Merge Integrity Protection (main)`) was
@@ -193,6 +205,14 @@ active, required one approval, dismissed stale approvals, required resolved
 review discussions, prohibited force pushes/deletion and had no bypass actors.
 It did **not** contain required status checks. This implementation does not
 silently claim that this has changed.
+
+A subsequent read of `GET /branches/main` showed seven required checks in
+classic branch protection: `codeql`, `gitleaks`, `govulncheck`, `python-tests`,
+`receipt-verifier`, `repository-hygiene` and `test`, each bound to App 15368.
+Classic protection and the ruleset both apply. The lockdown planner preserves
+those seven requirements and adds the two guard contexts. The full classic
+protection endpoint was unavailable to the integration; this is a partial
+observation, not a complete administration audit.
 
 After reviewing and merging the bootstrap change:
 
@@ -208,10 +228,9 @@ After reviewing and merging the bootstrap change:
 4. Require the exact check contexts `Pre-Merge Integrity Guard` and
    `SENTINEL Required CI`, with an expected publisher App, strict up-to-date
    requirements and no bypass. Preserve approvals and resolved discussions.
-5. Keep the existing secret scan, receipt verifier and Go/security checks
-   required as appropriate to the repository's approved policy; confirm their
-   actual emitted job names before adding them. This implementation does not
-   invent required-check names or claim that they are already enforced.
+5. Preserve the seven observed classic required checks, their source bindings,
+   and every other existing protection. Re-read the full configuration through
+   an authenticated administration route before applying the update.
 6. Verify missing, failing, cancelled and stale outcomes block a real test PR.
    A successful local test suite is not evidence of live ruleset enforcement.
 

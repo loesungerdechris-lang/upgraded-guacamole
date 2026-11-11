@@ -113,7 +113,7 @@ def test_private_key_headers_block_without_exporting_content(repository, kind):
 @pytest.mark.parametrize("name", [
     "src/integrity_guard/policy.py", ".github/workflows/guard.yml", ".github/CODEOWNERS",
     "pyproject.toml", "sitecustomize.py", "usercustomize.py",
-    "requirements/integrity-guard.txt", "tests/test_integrity_policy.py",
+    "requirements/integrity-guard.txt", "tests/test_integrity_policy.py", "sentinel_lockdown.json",
 ])
 def test_new_protected_files_require_a_trusted_upgrade(repository, name):
     repo, base = repository
@@ -133,6 +133,67 @@ def test_protected_deletion_is_not_silently_accepted(repository):
     result = scan(repo, base, commit(repo))
     assert result["exit_code"] == 40
     assert result["findings"][0]["rule_id"] == "INT-010"
+
+
+@pytest.mark.parametrize("name", [
+    "tests/test_receipt_verifier.py", "tests/fixtures/shared.py", "tests/data/policy.json",
+    "security/test_authorization.py", "security/authorization_test.py",
+    "internal/receipt/receipt_test.go",
+])
+def test_all_test_controls_require_independent_review(repository, name):
+    repo, base = repository
+    write(repo, name, "# synthetic test control\n")
+    result = scan(repo, base, commit(repo))
+    assert result["exit_code"] == 40
+    assert any(f["rule_id"] == "INT-011" and f["path"] == name for f in result["findings"])
+
+
+def test_removing_a_failing_security_test_cannot_turn_ci_green_unnoticed(repository):
+    repo, _ = repository
+    protected = "tests/test_receipt_verifier.py"
+    write(repo, protected, "def test_tampering_is_rejected():\n    assert False\n")
+    write(repo, "tests/test_sanity.py", "def test_sanity():\n    assert True\n")
+    base = commit(repo)
+    command = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests"]
+    environment = {
+        **os.environ, "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1", "PYTEST_ADDOPTS": "",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
+    before = subprocess.run(
+        command, cwd=repo, env=environment, capture_output=True, text=True, timeout=15,
+    )
+    assert before.returncode == 1
+    assert "1 failed" in before.stdout
+
+    (repo / protected).unlink()
+    head = commit(repo)
+    after = subprocess.run(
+        command, cwd=repo, env=environment, capture_output=True, text=True, timeout=15,
+    )
+    assert after.returncode == 0
+    assert "1 passed" in after.stdout
+
+    result = scan(repo, base, head)
+    assert result["exit_code"] == 40
+    assert result["complete"] is True
+    assert any(f["rule_id"] == "INT-010" and f["path"] == protected for f in result["findings"])
+
+
+def test_weakening_an_existing_test_is_a_protected_change(repository):
+    repo, _ = repository
+    name = "security/authorization_test.py"
+    write(repo, name, "def test_authorization():\n    assert False\n")
+    base = commit(repo)
+    write(repo, name, "def test_authorization():\n    assert True\n")
+    result = scan(repo, base, commit(repo))
+    assert result["exit_code"] == 40
+    assert any(f["rule_id"] == "INT-011" and f["path"] == name for f in result["findings"])
+
+
+def test_similarly_named_documentation_is_not_a_test_control(repository):
+    repo, base = repository
+    write(repo, "docs/test_notes.txt", "This is documentation, not executed test code.\n")
+    assert scan(repo, base, commit(repo))["exit_code"] == 0
 
 
 @pytest.mark.parametrize("name", [

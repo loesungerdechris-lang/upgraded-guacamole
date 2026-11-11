@@ -1,0 +1,164 @@
+{
+  "observation": {
+    "observed_at": "2026-11-11T23:19:06Z",
+    "scope": "Read-only GitHub API observation; not an activation receipt",
+    "branch_protection_source": "GET /branches/main projection; full administration endpoint unavailable",
+    "reviews_observed": 0
+  },
+  "repository": "loesungerdechris-lang/upgraded-guacamole",
+  "current_ruleset": {
+    "id": 27074079,
+    "name": "Pre-Merge Integrity Protection (main)",
+    "target": "branch",
+    "source_type": "Repository",
+    "source": "loesungerdechris-lang/upgraded-guacamole",
+    "enforcement": "active",
+    "conditions": {
+      "ref_name": {
+        "exclude": [],
+        "include": [
+          "refs/heads/main",
+          "~DEFAULT_BRANCH"
+        ]
+      }
+    },
+    "rules": [
+      {
+        "type": "deletion"
+      },
+      {
+        "type": "pull_request",
+        "parameters": {
+          "required_approving_review_count": 1,
+          "dismiss_stale_reviews_on_push": true,
+          "required_reviewers": [],
+          "require_code_owner_review": false,
+          "require_last_push_approval": false,
+          "required_review_thread_resolution": true,
+          "require_extra_approval_for_unattributed_changes": true,
+          "allowed_merge_methods": [
+            "merge",
+            "squash",
+            "rebase"
+          ]
+        }
+      },
+      {
+        "type": "non_fast_forward"
+      }
+    ],
+    "node_id": "RRS_lACqUmVwb3NpdG9yec5Hmh_vzgGdHh8",
+    "created_at": "2026-11-11T23:21:50.218+01:00",
+    "updated_at": "2026-11-11T23:21:50.245+01:00",
+    "bypass_actors": [],
+    "current_user_can_bypass": "never",
+    "_links": {
+      "self": {
+        "href": "https://api.github.com/repos/loesungerdechris-lang/upgraded-guacamole/rulesets/27074079"
+      },
+      "html": {
+        "href": "https://github.com/loesungerdechris-lang/upgraded-guacamole/rules/27074079"
+      }
+    }
+  },
+  "branch_protection": {
+    "enabled": true,
+    "required_status_checks": {
+      "enforcement_level": "everyone",
+      "contexts": [
+        "codeql",
+        "gitleaks",
+        "govulncheck",
+        "python-tests",
+        "receipt-verifier",
+        "repository-hygiene",
+        "test"
+      ],
+      "checks": [
+        {
+          "context": "codeql",
+          "app_id": 15368
+        },
+        {
+          "context": "gitleaks",
+          "app_id": 15368
+        },
+        {
+          "context": "govulncheck",
+          "app_id": 15368
+        },
+        {
+          "context": "python-tests",
+          "app_id": 15368
+        },
+        {
+          "context": "receipt-verifier",
+          "app_id": 15368
+        },
+        {
+          "context": "repository-hygiene",
+          "app_id": 15368
+        },
+        {
+          "context": "test",
+          "app_id": 15368
+        }
+      ]
+    }
+  },
+  "main_sha": "35c2623c1f01164f8361c0d6fdb2e50e854d46a1",
+  "bootstrap_pr": {
+    "number": 86,
+    "state": "open",
+    "draft": true,
+    "merged": false,
+    "merge_commit_sha": "06f32a4b15638eb991329ff5e575128665f5f288",
+    "user": {
+      "login": "loesungerdechris-lang"
+    },
+    "base": {
+      "ref": "main",
+      "sha": "35c2623c1f01164f8361c0d6fdb2e50e854d46a1",
+      "repo": {
+        "full_name": "loesungerdechris-lang/upgraded-guacamole"
+      }
+    },
+    "head": {
+      "ref": "feat/pre-merge-integrity-guard",
+      "sha": "50ae8bf82bd3d4e54b77923199f0657cbf153d4d",
+      "repo": {
+        "full_name": "loesungerdechris-lang/upgraded-guacamole"
+      }
+    }
+  },
+  "deployed_files_match": false,
+  "guard_check": null,
+  "ci_check": {
+    "id": 130845525695,
+    "name": "SENTINEL Required CI",
+    "status": "completed",
+    "conclusion": "success",
+    "head_sha": "50ae8bf82bd3d4e54b77923199f0657cbf153d4d",
+    "app": {
+      "id": 15368
+    },
+    "html_url": "https://github.com/loesungerdechris-lang/upgraded-guacamole/actions/runs/43116372428/job/130845525695"
+  },
+  "current_head_sha": "50ae8bf82bd3d4e54b77923199f0657cbf153d4d",
+  "source_app_id": 15368,
+  "independent_codeowner_verified": false,
+  "collector_blockers": [
+    {
+      "code": "ADMIN_PROTECTION_UNAVAILABLE",
+      "message": "The full branch-protection endpoint requires administration access that this integration does not have."
+    },
+    {
+      "code": "ADMIN_WRITE_UNAVAILABLE",
+      "message": "No authenticated administration write route is available in this environment."
+    },
+    {
+      "code": "VALIDATION_PR_REQUIRED",
+      "message": "A separate ordinary post-bootstrap validation PR has not been observed."
+    }
+  ]
+}
