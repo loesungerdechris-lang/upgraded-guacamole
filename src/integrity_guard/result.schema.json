@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pre-Merge Integrity Guard result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "status", "exit_code", "complete", "findings", "context", "checks"],
+  "properties": {
+    "schema_version": {"const": "1.0", "type": "string"},
+    "status": {"type": "string", "enum": ["PASS", "FAIL"]},
+    "exit_code": {"type": "integer", "enum": [0, 10, 20, 21, 22, 30, 40, 50, 99]},
+    "complete": {"type": "boolean"},
+    "summary": {"type": "string", "maxLength": 4096},
+    "context": {"$ref": "#/$defs/context"},
+    "checks": {
+      "type": "array", "minItems": 4, "maxItems": 4,
+      "items": {"$ref": "#/$defs/check"}
+    },
+    "findings": {
+      "type": "array", "maxItems": 1000,
+      "items": {"$ref": "#/$defs/finding"}
+    }
+  },
+  "$defs": {
+    "context": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repository", "base_sha", "head_sha", "policy_digest"],
+      "properties": {
+        "repository": {
+          "type": "string", "maxLength": 140,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9_][A-Za-z0-9_.-]{0,99}$"
+        },
+        "base_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$", "minLength": 40, "maxLength": 40},
+        "head_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$", "minLength": 40, "maxLength": 40},
+        "policy_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$", "minLength": 64, "maxLength": 64}
+      }
+    },
+    "check": {
+      "type": "object", "additionalProperties": false,
+      "required": ["check_id", "status", "complete"],
+      "properties": {
+        "check_id": {"type": "string", "enum": ["diff", "guard", "secrets", "workflows"]},
+        "status": {"type": "string", "enum": ["PASS", "FAIL", "ERROR"]},
+        "complete": {"type": "boolean"}
+      }
+    },
+    "finding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["rule_id", "severity", "confidence", "blocking", "message"],
+      "properties": {
+        "rule_id": {"type": "string", "pattern": "^INT-[0-9]{3}$", "minLength": 7, "maxLength": 7},
+        "severity": {"type": "string", "enum": ["critical", "high", "medium", "low", "info"]},
+        "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+        "blocking": {"type": "boolean"},
+        "message": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "action": {"type": "string", "maxLength": 4096},
+        "path": {
+          "type": "string", "minLength": 1, "maxLength": 1024,
+          "pattern": "^(?!/)(?!.*\\\\)(?!.*[\\u0000-\\u001f\\u007f-\\u009f]).+$"
+        },
+        "line": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "end_line": {"type": "integer", "minimum": 1, "maximum": 2147483647}
+      },
+      "dependentRequired": {
+        "line": ["path"],
+        "end_line": ["path", "line"]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "PASS"}}, "required": ["status"]},
+      "then": {"properties": {
+        "exit_code": {"const": 0},
+        "complete": {"const": true},
+        "findings": {"not": {"contains": {"properties": {"blocking": {"const": true}}, "required": ["blocking"]}}},
+        "checks": {"items": {"properties": {"status": {"const": "PASS"}, "complete": {"const": true}}}}
+      }}
+    },
+    {
+      "if": {"properties": {"exit_code": {"const": 0}}, "required": ["exit_code"]},
+      "then": {"properties": {"status": {"const": "PASS"}, "complete": {"const": true}}}
+    },
+    {
+      "if": {"properties": {"exit_code": {"const": 10}}, "required": ["exit_code"]},
+      "then": {"properties": {
+        "status": {"const": "FAIL"}, "complete": {"const": true},
+        "findings": {"contains": {"properties": {"blocking": {"const": true}}, "required": ["blocking"]}}
+      }}
+    },
+    {
+      "if": {"properties": {"exit_code": {"enum": [20, 21, 22, 30, 50, 99]}}, "required": ["exit_code"]},
+      "then": {"properties": {"status": {"const": "FAIL"}, "complete": {"const": false}}}
+    },
+    {
+      "if": {"properties": {"exit_code": {"const": 40}}, "required": ["exit_code"]},
+      "then": {"properties": {
+        "status": {"const": "FAIL"},
+        "findings": {"contains": {
+          "properties": {"rule_id": {"enum": ["INT-010", "INT-011"]}, "blocking": {"const": true}},
+          "required": ["rule_id", "blocking"]
+        }}
+      }}
+    },
+    {
+      "if": {"properties": {"complete": {"const": true}}, "required": ["complete"]},
+      "then": {"properties": {"checks": {"items": {"properties": {
+        "complete": {"const": true}, "status": {"enum": ["PASS", "FAIL"]}
+      }}}}}
+    }
+  ]
+}
