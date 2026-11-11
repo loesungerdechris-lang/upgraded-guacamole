@@ -74,3 +74,32 @@ jobs:
 
       - name: Test
         run: pytest -q
+
+  integrity-required-ci:
+    name: SENTINEL Required CI
+    if: ${{ always() }}
+    needs: [repository-hygiene, python-tests]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Require every mandatory job to have succeeded
+        env:
+          JOB_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import sys
+
+          expected = {"repository-hygiene", "python-tests"}
+          jobs = json.loads(os.environ["JOB_RESULTS"])
+          passed = (
+              set(jobs) == expected
+              and all(jobs[name].get("result") == "success" for name in expected)
+          )
+          if not passed:
+              print("Mandatory CI did not complete successfully.")
+              sys.exit(1)
+          print("All mandatory CI jobs completed successfully.")
+          PY

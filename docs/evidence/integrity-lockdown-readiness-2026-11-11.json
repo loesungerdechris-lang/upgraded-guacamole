@@ -1,0 +1,47 @@
+{
+  "atomic_compare_and_swap": false,
+  "blockers": [
+    {
+      "code": "BOOTSTRAP_NOT_MERGED",
+      "message": "The bootstrap PR has not been verified as merged."
+    },
+    {
+      "code": "BOOTSTRAP_REVISION_REUSED",
+      "message": "The bootstrap revision cannot be its own activation test."
+    },
+    {
+      "code": "DEPLOYMENT_NOT_VERIFIED",
+      "message": "Protected-base files do not match the reviewed implementation."
+    },
+    {
+      "code": "INDEPENDENT_CODEOWNER_REQUIRED",
+      "message": "An eligible independent code owner must be verified."
+    },
+    {
+      "code": "GUARD_CHECK_MISSING",
+      "message": "A required current-revision check has not been observed."
+    },
+    {
+      "code": "ADMIN_PROTECTION_UNAVAILABLE",
+      "message": "The evidence collector reported an unresolved prerequisite."
+    },
+    {
+      "code": "COLLECTOR_HOLD",
+      "message": "The evidence collector reported an unresolved prerequisite."
+    }
+  ],
+  "current_ruleset_sha256": "b3ca0fc204210a5434d646428a1c640c0f758ed246edeae14256c99db7ab2b0c",
+  "exit_code": 20,
+  "input_provenance": "unverified_offline_snapshot",
+  "mode": "offline",
+  "payload_sha256": "c967095b82363668d23c0d53dcc9da2dff4f9712ec73d3d185e437f763bb4482",
+  "plan_sha256": "d481e981826e6d2a098b4146511c4f899bea7c9994db843707fc07876a42e03c",
+  "readback_verified": false,
+  "repository": "loesungerdechris-lang/upgraded-guacamole",
+  "ruleset_id": 27074079,
+  "schema_version": "1.0",
+  "source_app_id": 15368,
+  "status": "HOLD",
+  "write_attempted": false,
+  "write_performed": false
+}

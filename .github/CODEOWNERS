@@ -12,6 +12,12 @@
 /src/sentinel_core/receipt.py @loesungerdechris-lang
 /src/sentinel_core/schema.py @loesungerdechris-lang
 /src/sentinel_core/trust.py @loesungerdechris-lang
+/src/integrity_guard/ @loesungerdechris-lang
+/tests/test_integrity_*.py @loesungerdechris-lang
+/tests/ @loesungerdechris-lang
+/sentinel_lockdown.json @loesungerdechris-lang
+/requirements/integrity-guard.txt @loesungerdechris-lang
+/docs/pre-merge-integrity-guard.md @loesungerdechris-lang
 /tests/test_receipt_verifier.py @loesungerdechris-lang
 /docs/receipt-verifier-production-gate.md @loesungerdechris-lang
 /docs/github-main-protection-checklist.md @loesungerdechris-lang

@@ -1,0 +1,51 @@
+name: Pre-Merge Integrity Guard
+
+on:
+  # The privileged controller runs only code from the protected base revision.
+  # PR blobs are fetched as Git objects and inspected as data, never checked out.
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft, edited]
+
+permissions: {}
+
+concurrency:
+  group: integrity-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  integrity-controller:
+    # Distinct from the custom PR-head-bound Check Run created by the adapter.
+    name: Integrity Guard Controller
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+    steps:
+      - name: Checkout trusted base only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: trusted
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install locked trusted runtime
+        run: >-
+          python -m pip install --disable-pip-version-check --only-binary=:all:
+          --require-hashes -r trusted/requirements/integrity-guard.txt
+
+      - name: Inspect PR objects and publish exact result
+        env:
+          GUARD_GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -I -c 'import sys; sys.path.insert(0, sys.argv.pop(1)); from integrity_guard.github import main; raise SystemExit(main())' "$GITHUB_WORKSPACE/trusted/src" --trusted-root "$GITHUB_WORKSPACE/trusted"
