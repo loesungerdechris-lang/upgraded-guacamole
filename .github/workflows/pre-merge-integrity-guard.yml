@@ -1,0 +1,170 @@
+name: Pre-Merge Integrity Guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# Prevent concurrent runs on the same PR
+concurrency:
+  group: integrity-guard-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write          # required to create/update Check Runs
+  statuses: write
+
+jobs:
+  integrity-guard:
+    name: Pre-Merge Integrity Guard
+    runs-on: ubuntu-latest
+    # Do not run on drafts unless explicitly requested
+    if: github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create Check Run (in_progress)
+        id: create-check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: check } = await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'Pre-Merge Integrity Guard',
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'in_progress',
+              started_at: new Date().toISOString(),
+              output: {
+                title: 'Pre-Merge Integrity Guard',
+                summary: 'Analyse läuft …'
+              }
+            });
+            core.setOutput('check_run_id', check.id);
+            console.log(`Check Run created: ${check.id}`);
+
+      - name: Analyse Diff (Placeholder)
+        id: analyse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // ---------------------------------------------------------------
+            // PLACEHOLDER – hier kommt die echte Analyse-Logik hin
+            // (Logikfehler, Secrets, unsichere Praktiken, ethische Checks)
+            // ---------------------------------------------------------------
+
+            const findings = [];
+
+            // Beispiel-Funde (werden durch echte Scanner ersetzt)
+            // findings.push({
+            //   path: 'src/example.go',
+            //   start_line: 42,
+            //   end_line: 42,
+            //   annotation_level: 'failure',
+            //   message: 'Hartcodiertes Geheimnis gefunden',
+            //   title: 'Secret detected'
+            // });
+
+            // Aktuell: keine Funde → success
+            const hasFailures = findings.some(f => f.annotation_level === 'failure');
+            const hasWarnings = findings.some(f => f.annotation_level === 'warning');
+
+            core.setOutput('conclusion', hasFailures ? 'failure' : 'success');
+            core.setOutput('findings', JSON.stringify(findings));
+            core.setOutput('summary', hasFailures
+              ? `${findings.filter(f => f.annotation_level === 'failure').length} kritische Funde`
+              : hasWarnings
+                ? `${findings.filter(f => f.annotation_level === 'warning').length} Warnungen`
+                : 'Keine kritischen Funde – Integrität bestätigt');
+
+      - name: Complete Check Run with Annotations
+        uses: actions/github-script@v7
+        env:
+          CHECK_RUN_ID: ${{ steps.create-check.outputs.check_run_id }}
+          CONCLUSION: ${{ steps.analyse.outputs.conclusion }}
+          SUMMARY: ${{ steps.analyse.outputs.summary }}
+          FINDINGS: ${{ steps.analyse.outputs.findings }}
+        with:
+          script: |
+            const findings = JSON.parse(process.env.FINDINGS || '[]');
+            const conclusion = process.env.CONCLUSION || 'success';
+            const summary = process.env.SUMMARY || 'Analyse abgeschlossen';
+
+            // Maximal 50 Annotations pro Request (GitHub Limit)
+            const annotations = findings.slice(0, 50).map(f => ({
+              path: f.path,
+              start_line: f.start_line,
+              end_line: f.end_line || f.start_line,
+              annotation_level: f.annotation_level, // notice | warning | failure
+              message: f.message,
+              title: f.title || undefined
+            }));
+
+            await github.rest.checks.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              check_run_id: Number(process.env.CHECK_RUN_ID),
+              status: 'completed',
+              conclusion: conclusion,
+              completed_at: new Date().toISOString(),
+              output: {
+                title: 'Pre-Merge Integrity Guard',
+                summary: summary,
+                text: findings.length > 0
+                  ? findings.map(f =>
+                      `**${f.annotation_level.toUpperCase()}** \`${f.path}:${f.start_line}\` – ${f.message}`
+                    ).join('\n')
+                  : 'Keine Beanstandungen.',
+                annotations: annotations
+              }
+            });
+
+            console.log(`Check Run completed with conclusion: ${conclusion}`);
+            console.log(`Annotations written: ${annotations.length}`);
+
+      - name: Set Integrity Label
+        uses: actions/github-script@v7
+        env:
+          CONCLUSION: ${{ steps.analyse.outputs.conclusion }}
+        with:
+          script: |
+            const conclusion = process.env.CONCLUSION;
+            const labelToAdd = conclusion === 'success'
+              ? 'Integrität: Bestätigt'
+              : 'Integrität: Blockiert';
+            const labelToRemove = conclusion === 'success'
+              ? 'Integrität: Blockiert'
+              : 'Integrität: Bestätigt';
+
+            // Altes Label entfernen (falls vorhanden)
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                name: labelToRemove
+              });
+            } catch (e) {
+              // Label war nicht gesetzt – ok
+            }
+
+            // Neues Label setzen
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              labels: [labelToAdd]
+            });
+
+            console.log(`Label gesetzt: ${labelToAdd}`);
+
+      - name: Fail job on critical findings (fail-closed)
+        if: steps.analyse.outputs.conclusion == 'failure'
+        run: |
+          echo "::error::Pre-Merge Integrity Guard hat kritische Funde – Merge blockiert"
+          exit 1
